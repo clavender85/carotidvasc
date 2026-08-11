@@ -1,0 +1,6 @@
+{
+  "name": "Carotid Ultrasound Worksheet",
+  "description": "An interactive vascular reporting workspace built around a true anatomical vessel tree supporting ASUM 2021, SRU, and NASCET guidelines.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
