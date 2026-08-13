@@ -502,3 +502,75 @@ export function generateSideSummary(side: 'right' | 'left', studyData: StudyData
     imtMm: side === 'right' ? studyData.imt.right : studyData.imt.left
   };
 }
+
+// Generate structured clinical impression narrative text
+export function generateClinicalImpressionNarrative(studyData: StudyData): {
+  right: string;
+  left: string;
+  overall: string;
+} {
+  const rightSummary = generateSideSummary('right', studyData);
+  const leftSummary = generateSideSummary('left', studyData);
+
+  // Right Side Narrative
+  let rightText = `RIGHT ICA: ${rightSummary.confirmedClassification}.`;
+  if (rightSummary.highestIcaPsv !== null) {
+    rightText += ` Peak PSV ${rightSummary.highestIcaPsv} cm/s, EDV ${rightSummary.correspondingIcaEdv ?? 'N/A'} cm/s.`;
+  }
+  if (rightSummary.icaCcaRatio !== null) {
+    rightText += ` ICA/CCA PSV Ratio ${rightSummary.icaCcaRatio}.`;
+  }
+  if (rightSummary.maxPlaqueLocation) {
+    rightText += ` Plaque at ${rightSummary.maxPlaqueLocation}`;
+    if (rightSummary.maxPlaqueThickness !== null) {
+      rightText += ` (thickness ${rightSummary.maxPlaqueThickness} mm)`;
+    }
+    rightText += `.`;
+  }
+  if (rightSummary.vertebralFlowDirection !== 'not_assessed') {
+    rightText += ` Right vertebral flow: ${rightSummary.vertebralFlowDirection}.`;
+  }
+  if (rightSummary.subclavianStealSuspected) {
+    rightText += ` [Subclavian steal physiology suspected].`;
+  }
+
+  // Left Side Narrative
+  let leftText = `LEFT ICA: ${leftSummary.confirmedClassification}.`;
+  if (leftSummary.highestIcaPsv !== null) {
+    leftText += ` Peak PSV ${leftSummary.highestIcaPsv} cm/s, EDV ${leftSummary.correspondingIcaEdv ?? 'N/A'} cm/s.`;
+  }
+  if (leftSummary.icaCcaRatio !== null) {
+    leftText += ` ICA/CCA PSV Ratio ${leftSummary.icaCcaRatio}.`;
+  }
+  if (leftSummary.maxPlaqueLocation) {
+    leftText += ` Plaque at ${leftSummary.maxPlaqueLocation}`;
+    if (leftSummary.maxPlaqueThickness !== null) {
+      leftText += ` (thickness ${leftSummary.maxPlaqueThickness} mm)`;
+    }
+    leftText += `.`;
+  }
+  if (leftSummary.vertebralFlowDirection !== 'not_assessed') {
+    leftText += ` Left vertebral flow: ${leftSummary.vertebralFlowDirection}.`;
+  }
+  if (leftSummary.subclavianStealSuspected) {
+    leftText += ` [Subclavian steal physiology suspected].`;
+  }
+
+  // Overall Narrative
+  const protoName = studyData.classificationSystem.replace(/_/g, ' ');
+  let overall = `CAROTID DOPPLER IMPRESSION (${protoName}):\n`;
+  overall += `1. ${rightText}\n`;
+  overall += `2. ${leftText}\n`;
+
+  if (studyData.nonCarotidFindings && studyData.nonCarotidFindings.length > 0) {
+    const ncStr = studyData.nonCarotidFindings.map(f => `${f.side.toUpperCase()} ${f.type}${f.sizeMm ? ` (${f.sizeMm} mm)` : ''}: ${f.comments}`).join('; ');
+    overall += `3. Associated Pathologies / Non-Carotid: ${ncStr}.\n`;
+  }
+
+  return {
+    right: rightText,
+    left: leftText,
+    overall
+  };
+}
+

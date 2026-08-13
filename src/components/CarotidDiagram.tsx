@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { StudyData, SegmentData } from '../types';
 import { SEGMENTS_META } from '../constants';
 import { checkSubclavianSteal, calculateIcaCcaRatio, suggestIcaStenosisCategory } from '../utils/calculations';
-import { ShieldAlert, ArrowUp, ArrowDown, ArrowUpDown, X, HelpCircle, Activity, Eye } from 'lucide-react';
+import { ShieldAlert, ArrowUp, ArrowDown, ArrowUpDown, X, HelpCircle, Activity, Eye, Layers } from 'lucide-react';
 
 interface CarotidDiagramProps {
   studyData: StudyData;
@@ -10,6 +10,7 @@ interface CarotidDiagramProps {
   activeSegmentId: string | null;
   onSelectSegment: (id: string, isMulti: boolean) => void;
   onAssessSegment: (id: string) => void;
+  onToggleVariant: () => void;
 }
 
 export const CarotidDiagram: React.FC<CarotidDiagramProps> = ({
@@ -18,6 +19,7 @@ export const CarotidDiagram: React.FC<CarotidDiagramProps> = ({
   activeSegmentId,
   onSelectSegment,
   onAssessSegment,
+  onToggleVariant,
 }) => {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -26,8 +28,9 @@ export const CarotidDiagram: React.FC<CarotidDiagramProps> = ({
   const [zoom, setZoom] = useState<number>(1.0);
   const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   
-  // View mode: Carotid Focus (default true) vs Full Anatomy
+  // View mode & Label density
   const [focusMode, setFocusMode] = useState<boolean>(true);
+  const [labelDensity, setLabelDensity] = useState<'minimal' | 'full' | 'hidden'>('minimal');
 
   const isRightSteal = checkSubclavianSteal('right', studyData);
   const isLeftSteal = checkSubclavianSteal('left', studyData);
@@ -97,46 +100,32 @@ export const CarotidDiagram: React.FC<CarotidDiagramProps> = ({
     const hasPsv = s.psv !== null;
     const isOccluded = s.flowDirection === 'absent';
 
-    const isSubclavian = meta.type === 'subclavian';
-    const isStealThreatened = isSubclavian && ((meta.side === 'right' && isRightSteal) || (meta.side === 'left' && isLeftSteal));
+    const side = meta.side;
+    const matchingPlaque = studyData.plaques.find(p => p.segments.includes(id) || p.maxPlaqueSite === id);
+    const plaqueComp = matchingPlaque?.composition?.toLowerCase() || '';
 
-    // Base color determinations
-    let strokeColor = '#1e293b';
-    let strokeDasharray: string | undefined = undefined;
-
-    if (isActive) {
-      strokeColor = '#22d3ee'; // Brighter active cyan
-    } else if (isSelected) {
-      strokeColor = '#06b6d4'; // Cyan
-    } else if (isOccluded) {
-      strokeColor = '#991b1b'; // Dark burgundy
-      strokeDasharray = '5,3';
-    } else if (isStealThreatened) {
-      strokeColor = '#f59e0b'; // Amber
-    } else if (isStenotic) {
-      strokeColor = '#ef4444'; // Red
-    } else if (isPlaque) {
-      strokeColor = '#d97706'; // Plaque amber
-    } else if (isImtIncreased) {
-      strokeColor = '#0284c7'; // Sky blue
-    } else if (hasPsv) {
-      strokeColor = '#0d9488'; // Teal
-    }
+    // Determine stenosis severity level
+    const psvVal = s.psv || 0;
+    const sideEval = side === 'right' ? rightEval : leftEval;
+    const isIcaOrBulb = meta.type === 'ica' || meta.type === 'bulb';
+    
+    let isSevere = isStenotic && (psvVal >= 270 || s.comments.toLowerCase().includes('severe') || s.comments.toLowerCase().includes('70') || s.comments.toLowerCase().includes('80') || (isIcaOrBulb && sideEval?.category.includes('Severe')));
+    let isModerate = !isSevere && isStenotic && (psvVal >= 125 || s.comments.toLowerCase().includes('moderate') || s.comments.toLowerCase().includes('50') || (isIcaOrBulb && sideEval?.category.includes('Moderate')));
+    let isMild = !isSevere && !isModerate && (isPlaque || isStenotic);
 
     let finalStrokeWidth = strokeWidth;
     if (meta.type === 'bulb') {
-      finalStrokeWidth = strokeWidth * 1.6; // Enlarged bulb
-    }
-    if (isStenotic) {
-      finalStrokeWidth = strokeWidth * 0.4;
-    }
-    if (isActive) {
-      finalStrokeWidth += 2;
+      finalStrokeWidth = strokeWidth * 1.5; // Enlarged bulb
     }
 
-    // Label positioning
-    const textLength = meta.shortName.length;
-    const rectWidth = textLength * 6.2 + 10;
+    // Label formatting based on density
+    let displayName = meta.shortName;
+    if (labelDensity === 'minimal') {
+      displayName = meta.shortName.split(' ')[0]; // e.g. "ICA", "CCA", "Vert", "Sub", "BCT", "Bulb"
+    }
+
+    const textLength = displayName.length;
+    const rectWidth = textLength * 6.5 + 8;
     const rectX = labelPos
       ? labelPos.align === 'start'
         ? labelPos.x - 4
@@ -144,6 +133,11 @@ export const CarotidDiagram: React.FC<CarotidDiagramProps> = ({
         ? labelPos.x - rectWidth + 4
         : labelPos.x - rectWidth / 2
       : 0;
+
+    // NASCET percentage for this side if > 50%
+    const sideNascet = studyData.nascet[side as 'right' | 'left'];
+    const nascetVal = sideNascet.longitudinal.calculatedStenosis ?? sideNascet.transverse.calculatedStenosis;
+    const showNascet = isIcaOrBulb && nascetVal !== null && nascetVal > 50;
 
     return (
       <g
@@ -154,35 +148,87 @@ export const CarotidDiagram: React.FC<CarotidDiagramProps> = ({
         onMouseMove={(e) => handleMouseMove(e, id)}
         onMouseLeave={handleMouseLeave}
       >
-        {/* Glow backing for active or selected */}
+        {/* Glow backing for active, selected, or hovered */}
         {(isActive || isSelected || isHovered) && (
           <path
             d={d}
             fill="none"
-            stroke={isActive ? '#22d3ee' : isSelected ? '#06b6d4' : '#334155'}
-            strokeWidth={finalStrokeWidth + 14}
+            stroke={isActive ? '#22d3ee' : isSelected ? '#06b6d4' : '#475569'}
+            strokeWidth={finalStrokeWidth + 12}
             strokeLinecap="round"
-            opacity={isActive ? 0.5 : isSelected ? 0.35 : 0.15}
+            opacity={isActive ? 0.6 : isSelected ? 0.4 : 0.2}
             filter={isActive ? 'url(#neon-glow)' : undefined}
           />
         )}
 
-        {/* Intimal Thickening outer layer */}
-        {isImtIncreased && !isStenotic && !isOccluded && (
-          <path d={d} fill="none" stroke="#38bdf8" strokeWidth={finalStrokeWidth + 6} strokeLinecap="round" opacity={0.4} />
-        )}
-
-        {/* Main vessel path */}
+        {/* Outer Arterial Vessel Wall Boundary */}
         <path
           d={d}
           fill="none"
-          stroke={strokeColor}
-          strokeWidth={finalStrokeWidth}
+          stroke={isActive ? '#22d3ee' : isSelected ? '#0891b2' : '#334155'}
+          strokeWidth={finalStrokeWidth + 2}
           strokeLinecap="round"
-          strokeDasharray={strokeDasharray}
         />
 
-        {/* Hit box with wide transparent stroke for easy clinical clicking */}
+        {/* Intraluminal Base (Dark Vessel Cavity) */}
+        <path
+          d={d}
+          fill="none"
+          stroke="#020617"
+          strokeWidth={finalStrokeWidth - 1}
+          strokeLinecap="round"
+        />
+
+        {/* Normal Flow Streamline (When normal & assessed) */}
+        {hasPsv && !isPlaque && !isStenotic && !isOccluded && (
+          <path
+            d={d}
+            fill="none"
+            stroke="#0d9488"
+            strokeWidth={3.5}
+            strokeLinecap="round"
+            opacity={0.85}
+          />
+        )}
+
+        {/* Intraluminal Plaque & Grayscale Morphology Cues (Drawn inside vessel without severity color override) */}
+        {isOccluded ? (
+          <>
+            <path d={d} fill="none" stroke="#7f1d1d" strokeWidth={finalStrokeWidth - 2} strokeLinecap="round" opacity={0.95} />
+            <path d={d} fill="none" stroke="#ef4444" strokeWidth={2.5} strokeLinecap="round" strokeDasharray="4,2" />
+          </>
+        ) : isPlaque || isStenotic || isImtIncreased ? (
+          <>
+            {/* Plaque base rendered using grayscale morphology cues */}
+            <path
+              d={d}
+              fill="none"
+              stroke={
+                plaqueComp.includes('hypo') ? '#64748b' : // Hypoechoic = dark soft gray
+                plaqueComp.includes('calc') ? '#1e293b' : // Calcific = dense dark core
+                plaqueComp.includes('echog') || plaqueComp.includes('hyper') ? '#cbd5e1' : // Echogenic = bright silver
+                plaqueComp.includes('mixed') || plaqueComp.includes('hetero') ? '#94a3b8' : '#475569' // Isoechoic = medium gray
+              }
+              strokeWidth={finalStrokeWidth * (isSevere ? 0.75 : isModerate ? 0.55 : 0.35)}
+              strokeLinecap="round"
+              opacity={0.88}
+            />
+            {/* Calcific bright center highlight if calcific */}
+            {plaqueComp.includes('calc') && (
+              <path d={d} fill="none" stroke="#f8fafc" strokeWidth={2} strokeLinecap="round" />
+            )}
+            {/* Luminal residual core */}
+            <path
+              d={d}
+              fill="none"
+              stroke={isSevere ? '#fef08a' : isModerate ? '#fed7aa' : '#38bdf8'}
+              strokeWidth={isSevere ? 2 : 3}
+              strokeLinecap="round"
+            />
+          </>
+        ) : null}
+
+        {/* Wide Transparent Hit Area for Effortless Clinical Clicking */}
         <path
           d={d}
           fill="none"
@@ -192,103 +238,113 @@ export const CarotidDiagram: React.FC<CarotidDiagramProps> = ({
           style={{ pointerEvents: 'stroke', cursor: 'pointer' }}
         />
 
-        {/* Intraluminal Plaque / Stenosis Encroachment Fill */}
-        {(isPlaque || isStenotic || isImtIncreased) && !isOccluded && (
-          <path
-            d={d}
-            fill="none"
-            stroke={
-              isStenotic ? '#ef4444' :
-              isPlaque ? '#f97316' : '#38bdf8'
-            }
-            strokeWidth={finalStrokeWidth * 0.65}
-            strokeLinecap="round"
-            opacity={0.82}
-            style={{ pointerEvents: 'none' }}
-          />
-        )}
-
-        {/* Max Stenosis Marker if marked or highest ICA velocity */}
-        {isStenotic && (
+        {/* Point of Maximum Stenosis (Focal MAX Marker) */}
+        {(isStenotic || isSevere || isModerate) && (
           <g transform={`translate(${getMidpointOfPath(d).x}, ${getMidpointOfPath(d).y})`} style={{ pointerEvents: 'none' }}>
-            <circle r={7} fill="#ef4444" stroke="#ffffff" strokeWidth={1.5} className="animate-pulse" />
-            <text x={0} y={3} textAnchor="middle" className="text-[7px] font-extrabold fill-white uppercase select-none">
+            <circle r={6.5} fill="#ef4444" stroke="#ffffff" strokeWidth={1.5} className="animate-pulse" />
+            <text x={0} y={2.5} textAnchor="middle" className="text-[6.5px] font-black fill-white uppercase select-none">
               MAX
             </text>
           </g>
         )}
 
-        {/* Vessel Name Label (Clean Pill) */}
-        {labelPos && (
-          <g className="transition-all duration-150" style={{ pointerEvents: 'none' }}>
+        {/* Short Anatomy Label Pill (Respects label density mode) */}
+        {labelPos && labelDensity !== 'hidden' && (
+          <g style={{ pointerEvents: 'none' }}>
             <rect
               x={rectX}
-              y={labelPos.y - 8.5}
+              y={labelPos.y - 8}
               width={rectWidth}
-              height={16}
-              rx={4}
+              height={15}
+              rx={3.5}
               fill="#020617"
               stroke={isActive ? '#22d3ee' : isSelected ? '#06b6d4' : isHovered ? '#475569' : '#1e293b'}
               strokeWidth={isActive || isSelected ? 1.5 : 0.75}
-              opacity={0.95}
+              opacity={0.92}
             />
             <text
               x={labelPos.x}
               y={labelPos.y + 3}
               textAnchor={labelPos.align || 'middle'}
-              className={`text-[10px] font-bold tracking-tight select-none pointer-events-none ${
+              className={`text-[9.5px] font-bold tracking-tight select-none ${
                 isActive ? 'fill-cyan-300 font-extrabold' : isSelected ? 'fill-cyan-400 font-extrabold' : isHovered ? 'fill-slate-100' : 'fill-slate-300'
               }`}
             >
-              {meta.shortName}
+              {displayName}
             </text>
           </g>
         )}
 
-        {/* Direct Velocity Display Beside Anatomy (PSV / EDV) */}
+        {/* Compact Adjacent Numbers (PSV, EDV, Ratio, NASCET if >50%) */}
         {velocityPos && hasPsv && (
           <g transform={`translate(${velocityPos.x}, ${velocityPos.y})`} className="select-none" style={{ pointerEvents: 'none' }}>
-            <rect
-              x={velocityPos.align === 'end' ? -65 : 0}
-              y={-12}
-              width={65}
-              height={26}
-              rx={4}
-              fill="#090d16"
-              stroke={s.psv && s.psv > 200 ? '#ef4444' : s.psv && s.psv > 125 ? '#f59e0b' : '#334155'}
-              strokeWidth={1}
-              opacity={0.92}
-            />
             <text
-              x={velocityPos.align === 'end' ? -32 : 32}
-              y={-2}
-              textAnchor="middle"
-              className={`text-[10px] font-mono font-black ${
-                s.psv && s.psv > 200 ? 'fill-rose-400' : s.psv && s.psv > 125 ? 'fill-amber-400' : 'fill-teal-300'
+              x={velocityPos.align === 'end' ? -3 : 3}
+              y={-5}
+              textAnchor={velocityPos.align === 'end' ? 'end' : 'start'}
+              className={`text-[9.5px] font-mono font-black ${
+                isOccluded ? 'fill-rose-600' :
+                isSevere ? 'fill-rose-400 font-extrabold' :
+                isModerate ? 'fill-orange-400 font-extrabold' :
+                isMild ? 'fill-amber-400' :
+                s.psv && s.psv >= 125 ? 'fill-orange-400' : 'fill-emerald-400'
               }`}
             >
-              {s.psv} <tspan className="text-[7px] font-normal fill-slate-400">cm/s</tspan>
+              <tspan className="text-[7px] font-sans font-bold fill-slate-400">P </tspan>
+              {s.psv}
             </text>
             <text
-              x={velocityPos.align === 'end' ? -32 : 32}
-              y={10}
-              textAnchor="middle"
-              className="text-[9px] font-mono fill-slate-400"
+              x={velocityPos.align === 'end' ? -3 : 3}
+              y={3.5}
+              textAnchor={velocityPos.align === 'end' ? 'end' : 'start'}
+              className="text-[8px] font-mono fill-slate-300"
             >
-              EDV: {s.edv !== null ? s.edv : '-'}
+              <tspan className="text-[7px] font-sans fill-slate-500">E </tspan>
+              {s.edv !== null ? s.edv : '-'}
             </text>
+
+            {/* Display ICA/CCA ratio if stenosis >50% or PSV >= 125 */}
+            {meta.type === 'ica' && (side === 'right' ? rightIcaCca?.ratio : leftIcaCca?.ratio) && (isSevere || isModerate || (s.psv !== null && s.psv >= 125)) && (
+              <text
+                x={velocityPos.align === 'end' ? -3 : 3}
+                y={12.5}
+                textAnchor={velocityPos.align === 'end' ? 'end' : 'start'}
+                className="text-[7.5px] font-mono font-bold fill-cyan-300"
+              >
+                <tspan className="text-[6.5px] font-sans fill-slate-400">R </tspan>
+                {(side === 'right' ? rightIcaCca?.ratio : leftIcaCca?.ratio)?.toFixed(2)}
+              </text>
+            )}
+
+            {showNascet && nascetVal !== null && (
+              <text
+                x={velocityPos.align === 'end' ? -3 : 3}
+                y={(meta.type === 'ica' && (side === 'right' ? rightIcaCca?.ratio : leftIcaCca?.ratio) && (isSevere || isModerate || (s.psv !== null && s.psv >= 125))) ? 20 : 12.5}
+                textAnchor={velocityPos.align === 'end' ? 'end' : 'start'}
+                className="text-[7.5px] font-mono font-bold fill-rose-300"
+              >
+                N {Math.round(nascetVal)}%
+              </text>
+            )}
           </g>
         )}
 
-        {/* Vertebral Flow Direction Indicator */}
-        {meta.type === 'vertebral' && hasPsv && (
-          <g transform={`translate(${labelPos ? labelPos.x + (labelPos.align === 'end' ? -40 : 40) : 200}, ${labelPos ? labelPos.y : 200})`}>
+        {/* Vertebral Flow Direction Indicator (ONLY shown if abnormal: retrograde or bidirectional) */}
+        {meta.type === 'vertebral' && hasPsv && (s.flowDirection === 'retrograde' || s.flowDirection === 'bidirectional') && (
+          <g
+            transform={`translate(${labelPos ? labelPos.x + (labelPos.align === 'end' ? -45 : 45) : 200}, ${labelPos ? labelPos.y : 200})`}
+            style={{ pointerEvents: 'none' }}
+          >
+            <rect x={-2} y={-9} width={76} height={16} rx={3} fill="#020617" stroke={s.flowDirection === 'retrograde' ? '#f43f5e' : '#f59e0b'} strokeWidth={1} />
             <text
-              className={`text-[8px] font-bold font-mono ${
-                s.flowDirection === 'retrograde' ? 'fill-rose-400 animate-pulse' : 'fill-cyan-400'
+              className={`text-[7.5px] font-bold font-mono ${
+                s.flowDirection === 'retrograde' ? 'fill-rose-400 animate-pulse' : 'fill-amber-400'
               }`}
+              x={36}
+              y={2}
+              textAnchor="middle"
             >
-              {s.flowDirection === 'retrograde' ? '↓ RETROGRADE' : '↑ ANTEGRADE'}
+              {s.flowDirection === 'retrograde' ? '↓ RETROGRADE' : '↕ BIDIRECTIONAL'}
             </text>
           </g>
         )}
@@ -317,10 +373,10 @@ export const CarotidDiagram: React.FC<CarotidDiagramProps> = ({
     <div id="carotid-diagram-workspace" className="flex flex-col bg-[#0f172a] rounded-xl border border-slate-800 overflow-hidden relative min-h-[620px]">
       
       {/* Header Info & View Mode Toggle */}
-      <div className="p-4 bg-slate-900/80 border-b border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div className="p-4 bg-slate-900/80 border-b border-slate-800 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-slate-100 uppercase tracking-wider">Clinical Hemodynamic Map & Worksheet</span>
+            <span className="text-xs font-bold text-slate-100 uppercase tracking-wider">Clinical Hemodynamic Map & Anatomical Workspace</span>
             <span className="bg-cyan-950/80 border border-cyan-800 text-cyan-300 text-[9px] px-2 py-0.5 rounded font-mono font-bold">
               {focusMode ? 'Carotid Focus Mode' : 'Full Anatomy View'}
             </span>
@@ -330,7 +386,35 @@ export const CarotidDiagram: React.FC<CarotidDiagramProps> = ({
           </span>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Label Density Selector */}
+          <div className="flex items-center bg-slate-950/80 rounded-lg border border-slate-700/80 p-0.5">
+            <button
+              onClick={() => setLabelDensity('minimal')}
+              className={`px-2.5 py-1 rounded text-[10px] font-bold transition-all cursor-pointer ${
+                labelDensity === 'minimal' ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              Minimal Labels
+            </button>
+            <button
+              onClick={() => setLabelDensity('full')}
+              className={`px-2.5 py-1 rounded text-[10px] font-bold transition-all cursor-pointer ${
+                labelDensity === 'full' ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              Full Labels
+            </button>
+            <button
+              onClick={() => setLabelDensity('hidden')}
+              className={`px-2.5 py-1 rounded text-[10px] font-bold transition-all cursor-pointer ${
+                labelDensity === 'hidden' ? 'bg-rose-950 text-rose-300' : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              Hide Labels
+            </button>
+          </div>
+
           {/* View Mode Toggle Button */}
           <button
             onClick={() => setFocusMode(!focusMode)}
@@ -342,21 +426,13 @@ export const CarotidDiagram: React.FC<CarotidDiagramProps> = ({
             id="toggle-focus-mode"
           >
             <Eye className="w-3.5 h-3.5" />
-            {focusMode ? 'Carotid Focus (Active)' : 'Focus Carotids'}
+            {focusMode ? 'Carotid Focus' : 'Full Anatomy'}
           </button>
-
-          {/* Legend pills */}
-          <div className="hidden lg:flex items-center gap-2 text-[9px] text-slate-400 font-mono bg-slate-950/60 px-3 py-1.5 rounded-lg border border-slate-800">
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[#0d9488]"></span> Normal</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[#f59e0b]"></span> Plaque</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[#ef4444]"></span> Stenosis</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[#991b1b] border border-white border-dashed"></span> Occlusion</span>
-          </div>
         </div>
       </div>
 
       {/* SVG Canvas Container */}
-      <div className="p-6 flex items-center justify-center bg-[#070b14] overflow-hidden relative min-h-[560px]">
+      <div className="p-6 flex items-center justify-center bg-[#070b14] overflow-hidden relative min-h-[580px]">
         
         {/* Floating Precision Viewport Controller */}
         <div className="absolute top-4 right-4 flex items-center gap-1 bg-slate-900/95 border border-slate-700/80 p-1 rounded-lg shadow-xl z-20 backdrop-blur-sm select-none">
@@ -447,7 +523,7 @@ export const CarotidDiagram: React.FC<CarotidDiagramProps> = ({
             {renderVessel('r_cca_mid', 'M 365,420 C 365,360 365,310 365,260', 14, { x: 320, y: 340, align: 'end' }, { x: 415, y: 340, align: 'start' })}
             {renderVessel('r_cca_dist', 'M 365,260 C 365,240 365,220 365,200', 14, { x: 320, y: 235, align: 'end' }, { x: 415, y: 235, align: 'start' })}
 
-            {/* Carotid Bulb Right (Enlarged Bifurcation Zone) */}
+            {/* Carotid Bulb Right (Enlarged Bifurcation Zone - Primary Focus) */}
             {renderVessel('r_bulb', 'M 365,200 Q 365,175 365,150', 18, { x: 315, y: 175, align: 'end' })}
 
             {/* Internal Carotid Artery (ICA) Right (Prominent Branch) */}
@@ -461,41 +537,48 @@ export const CarotidDiagram: React.FC<CarotidDiagramProps> = ({
             {renderVessel('r_eca_dist', 'M 405,50 C 408,35 410,20 412,5', 9, { x: 450, y: 25, align: 'start' })}
 
             {/* Right Bifurcation Summary Badge & ICA/CCA Ratio Display */}
-            <g transform="translate(365, 145)" className="select-none">
+            <g transform="translate(365, 145)" className="select-none" style={{ pointerEvents: 'none' }}>
               {rightIcaCca !== null && (
-                <g transform="translate(-85, -20)">
-                  <rect x={0} y={0} width={75} height={32} rx={6} fill="#090d16" stroke="#06b6d4" strokeWidth={1.25} opacity={0.95} />
-                  <text x={37.5} y={12} textAnchor="middle" className="text-[9px] font-bold fill-slate-400">ICA/CCA</text>
-                  <text x={37.5} y={24} textAnchor="middle" className="text-[11px] font-mono font-black fill-cyan-400">{rightIcaCca.ratio.toFixed(2)}</text>
+                <g transform="translate(-72, -18)">
+                  <rect x={0} y={0} width={60} height={18} rx={4} fill="#020617" stroke="#06b6d4" strokeWidth={1} opacity={0.92} />
+                  <text x={30} y={12} textAnchor="middle" className="text-[9px] font-mono font-black fill-cyan-300">
+                    <tspan className="text-[7.5px] font-sans fill-slate-400 font-bold">R </tspan>
+                    {rightIcaCca.ratio.toFixed(2)}
+                  </text>
                 </g>
               )}
-              {rightEval && rightEval.category && (
-                <g transform="translate(15, -20)">
+              {rightEval && rightEval.category && rightEval.category !== 'Not Assessed' && (
+                <g transform="translate(15, -18)">
                   <rect
                     x={0}
                     y={0}
-                    width={90}
-                    height={32}
-                    rx={6}
-                    fill="#090d16"
+                    width={68}
+                    height={18}
+                    rx={4}
+                    fill="#020617"
                     stroke={
-                      rightEval.category.includes('Severe') || rightEval.category.includes('>=70') ? '#ef4444' :
-                      rightEval.category.includes('Moderate') || rightEval.category.includes('50-69') ? '#f59e0b' : '#0d9488'
+                      rightEval.category.includes('Severe') || rightEval.category.includes('80') || rightEval.category.includes('70') ? '#ef4444' :
+                      rightEval.category.includes('Moderate') || rightEval.category.includes('50') ? '#f97316' :
+                      rightEval.category.includes('Mild') ? '#f59e0b' : '#10b981'
                     }
-                    strokeWidth={1.5}
-                    opacity={0.95}
+                    strokeWidth={1.25}
+                    opacity={0.92}
                   />
-                  <text x={45} y={12} textAnchor="middle" className="text-[8px] font-bold fill-slate-400 uppercase">Stenosis Grade</text>
                   <text
-                    x={45}
-                    y={24}
+                    x={34}
+                    y={12}
                     textAnchor="middle"
-                    className={`text-[10px] font-black uppercase ${
-                      rightEval.category.includes('Severe') || rightEval.category.includes('>=70') ? 'fill-rose-400' :
-                      rightEval.category.includes('Moderate') || rightEval.category.includes('50-69') ? 'fill-amber-400' : 'fill-teal-300'
+                    className={`text-[8.5px] font-black uppercase ${
+                      rightEval.category.includes('Severe') || rightEval.category.includes('80') || rightEval.category.includes('70') ? 'fill-rose-400' :
+                      rightEval.category.includes('Moderate') || rightEval.category.includes('50') ? 'fill-orange-400' :
+                      rightEval.category.includes('Mild') ? 'fill-amber-400' : 'fill-emerald-400'
                     }`}
                   >
-                    {rightEval.category.split(' ')[0]}
+                    {rightEval.category.includes('80-94') ? '80-94%' :
+                     rightEval.category.includes('70-79') ? '70-79%' :
+                     rightEval.category.includes('50-69') ? '50-69%' :
+                     rightEval.category.includes('Mild') || rightEval.category.includes('<50') ? '<50%' :
+                     rightEval.category.includes('Occlusion') ? 'OCC' : 'NORMAL'}
                   </text>
                 </g>
               )}
@@ -540,41 +623,48 @@ export const CarotidDiagram: React.FC<CarotidDiagramProps> = ({
             {renderVessel('l_eca_dist', 'M 595,50 C 592,35 590,20 588,5', 9, { x: 550, y: 25, align: 'end' })}
 
             {/* Left Bifurcation Summary Badge & ICA/CCA Ratio Display */}
-            <g transform="translate(635, 145)" className="select-none">
+            <g transform="translate(635, 145)" className="select-none" style={{ pointerEvents: 'none' }}>
               {leftIcaCca !== null && (
-                <g transform="translate(10, -20)">
-                  <rect x={0} y={0} width={75} height={32} rx={6} fill="#090d16" stroke="#06b6d4" strokeWidth={1.25} opacity={0.95} />
-                  <text x={37.5} y={12} textAnchor="middle" className="text-[9px] font-bold fill-slate-400">ICA/CCA</text>
-                  <text x={37.5} y={24} textAnchor="middle" className="text-[11px] font-mono font-black fill-cyan-400">{leftIcaCca.ratio.toFixed(2)}</text>
+                <g transform="translate(15, -18)">
+                  <rect x={0} y={0} width={60} height={18} rx={4} fill="#020617" stroke="#06b6d4" strokeWidth={1} opacity={0.92} />
+                  <text x={30} y={12} textAnchor="middle" className="text-[9px] font-mono font-black fill-cyan-300">
+                    <tspan className="text-[7.5px] font-sans fill-slate-400 font-bold">R </tspan>
+                    {leftIcaCca.ratio.toFixed(2)}
+                  </text>
                 </g>
               )}
-              {leftEval && leftEval.category && (
-                <g transform="translate(-100, -20)">
+              {leftEval && leftEval.category && leftEval.category !== 'Not Assessed' && (
+                <g transform="translate(-82, -18)">
                   <rect
                     x={0}
                     y={0}
-                    width={90}
-                    height={32}
-                    rx={6}
-                    fill="#090d16"
+                    width={68}
+                    height={18}
+                    rx={4}
+                    fill="#020617"
                     stroke={
-                      leftEval.category.includes('Severe') || leftEval.category.includes('>=70') ? '#ef4444' :
-                      leftEval.category.includes('Moderate') || leftEval.category.includes('50-69') ? '#f59e0b' : '#0d9488'
+                      leftEval.category.includes('Severe') || leftEval.category.includes('80') || leftEval.category.includes('70') ? '#ef4444' :
+                      leftEval.category.includes('Moderate') || leftEval.category.includes('50') ? '#f97316' :
+                      leftEval.category.includes('Mild') ? '#f59e0b' : '#10b981'
                     }
-                    strokeWidth={1.5}
-                    opacity={0.95}
+                    strokeWidth={1.25}
+                    opacity={0.92}
                   />
-                  <text x={45} y={12} textAnchor="middle" className="text-[8px] font-bold fill-slate-400 uppercase">Stenosis Grade</text>
                   <text
-                    x={45}
-                    y={24}
+                    x={34}
+                    y={12}
                     textAnchor="middle"
-                    className={`text-[10px] font-black uppercase ${
-                      leftEval.category.includes('Severe') || leftEval.category.includes('>=70') ? 'fill-rose-400' :
-                      leftEval.category.includes('Moderate') || leftEval.category.includes('50-69') ? 'fill-amber-400' : 'fill-teal-300'
+                    className={`text-[8.5px] font-black uppercase ${
+                      leftEval.category.includes('Severe') || leftEval.category.includes('80') || leftEval.category.includes('70') ? 'fill-rose-400' :
+                      leftEval.category.includes('Moderate') || leftEval.category.includes('50') ? 'fill-orange-400' :
+                      leftEval.category.includes('Mild') ? 'fill-amber-400' : 'fill-emerald-400'
                     }`}
                   >
-                    {leftEval.category.split(' ')[0]}
+                    {leftEval.category.includes('80-94') ? '80-94%' :
+                     leftEval.category.includes('70-79') ? '70-79%' :
+                     leftEval.category.includes('50-69') ? '50-69%' :
+                     leftEval.category.includes('Mild') || leftEval.category.includes('<50') ? '<50%' :
+                     leftEval.category.includes('Occlusion') ? 'OCC' : 'NORMAL'}
                   </text>
                 </g>
               )}

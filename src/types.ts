@@ -84,6 +84,14 @@ export interface SideSummary {
   imtMm: number | null;
 }
 
+export interface NonCarotidFinding {
+  id: string;
+  type: string;
+  side: 'right' | 'left' | 'bilateral';
+  sizeMm?: number | null;
+  comments: string;
+}
+
 export interface StudyData {
   segments: Record<string, SegmentData>;
   plaques: PlaqueData[];
@@ -115,4 +123,14 @@ export interface StudyData {
   sonographer: string;
   interpretingPhysician: string;
   studyComments: string;
+  clinicalIndications: string[];
+  symptomSide: 'right' | 'left' | 'bilateral' | 'none';
+  symptomatic: boolean;
+  vascularHistory: string;
+  nonCarotidFindings: NonCarotidFinding[];
+  keyImpressions: {
+    right: string;
+    left: string;
+    general: string;
+  };
 }

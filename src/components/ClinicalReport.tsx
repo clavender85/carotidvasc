@@ -1,24 +1,35 @@
 import React from 'react';
 import { StudyData, SideSummary } from '../types';
-import { generateSideSummary, checkCcaSuitability } from '../utils/calculations';
+import { generateSideSummary, checkCcaSuitability, generateClinicalImpressionNarrative } from '../utils/calculations';
 import { SEGMENTS_META } from '../constants';
-import { FileText, Copy, Printer, Check, Clipboard, RefreshCw, AlertTriangle, ChevronRight } from 'lucide-react';
+import { FileText, Copy, Printer, Check, Clipboard, RefreshCw, AlertTriangle, ChevronRight, Sparkles } from 'lucide-react';
 
 interface ClinicalReportProps {
   studyData: StudyData;
   onConfirmClassification: (side: 'right' | 'left', category: string) => void;
+  onUpdateStudy: (updates: Partial<StudyData>) => void;
   onResetAll: () => void;
 }
 
 export const ClinicalReport: React.FC<ClinicalReportProps> = ({
   studyData,
   onConfirmClassification,
+  onUpdateStudy,
   onResetAll,
 }) => {
   const rightSummary = generateSideSummary('right', studyData);
   const leftSummary = generateSideSummary('left', studyData);
+  const synthesizedNarrative = generateClinicalImpressionNarrative(studyData);
 
   const [copied, setCopied] = React.useState(false);
+  const [copiedImpression, setCopiedImpression] = React.useState(false);
+
+  const handleCopyImpression = () => {
+    navigator.clipboard.writeText(synthesizedNarrative.overall).then(() => {
+      setCopiedImpression(true);
+      setTimeout(() => setCopiedImpression(false), 2000);
+    });
+  };
 
   // Quick categories for manual override dropdown list
   const getClassificationOptions = () => {
@@ -591,23 +602,54 @@ export const ClinicalReport: React.FC<ClinicalReportProps> = ({
         </div>
       </div>
 
+      {/* Synthesized Impression Card */}
+      <div className="p-6 border-t border-slate-200 bg-cyan-950/5 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-cyan-600" />
+            <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+              Synthesized Clinical Impression (Auto-Generated Narrative)
+            </h4>
+          </div>
+          <button
+            id="copy-impression-only-btn"
+            onClick={handleCopyImpression}
+            className="flex items-center gap-1 px-2.5 py-1 bg-cyan-600 hover:bg-cyan-700 text-white rounded text-[10px] font-bold transition-all shadow-sm"
+          >
+            {copiedImpression ? (
+              <>
+                <Check className="w-3 h-3 text-white" />
+                <span>Copied Impression!</span>
+              </>
+            ) : (
+              <>
+                <Copy className="w-3 h-3" />
+                <span>Copy Impression Only</span>
+              </>
+            )}
+          </button>
+        </div>
+        <div className="p-3.5 bg-white border border-cyan-200 rounded-xl text-xs font-mono text-slate-800 whitespace-pre-wrap leading-relaxed shadow-sm">
+          {synthesizedNarrative.overall}
+        </div>
+      </div>
+
       {/* Narrative Comments and Manual Input Conclusion Area */}
       <div className="p-6 border-t border-slate-200 bg-slate-50 space-y-4">
         <div>
-          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-2">Overall Study Comments, Impression & Technical Limitations</label>
+          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-2">
+            Sonographer & Physician Conclusions / Custom Notes
+          </label>
           <textarea
             id="report-narrative-comments"
             placeholder="Type comprehensive conclusions, diagnostic recommendations, and technical caveats..."
             value={studyData.studyComments}
-            onChange={(e) => onResetAll ? onConfirmClassification('right', rightSummary.confirmedClassification) : null} // dummy link to update state
-            className="w-full h-24 bg-white border border-slate-200 rounded-xl p-3 text-xs focus:outline-none"
-            onInput={(e) => {
-              const target = e.target as HTMLTextAreaElement;
-              studyData.studyComments = target.value;
-            }}
+            onChange={(e) => onUpdateStudy({ studyComments: e.target.value })}
+            className="w-full h-24 bg-white border border-slate-200 rounded-xl p-3 text-xs focus:ring-2 focus:ring-cyan-500 focus:outline-none"
           />
         </div>
       </div>
+
       
     </div>
   );

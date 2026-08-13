@@ -439,8 +439,51 @@ export function getInitialStudyData(): StudyData {
     sonographer: '',
     interpretingPhysician: '',
     studyComments: '',
+    clinicalIndications: [],
+    symptomSide: 'none',
+    symptomatic: false,
+    vascularHistory: '',
+    nonCarotidFindings: [],
+    keyImpressions: {
+      right: '',
+      left: '',
+      general: '',
+    },
   };
 }
+
+export const CAROTID_INDICATIONS = [
+  'TIA symptoms',
+  'Stroke symptoms',
+  'Amaurosis fugax',
+  'Transient visual disturbance',
+  'Dizziness',
+  'Vertigo',
+  'Syncope / presyncope',
+  'Carotid bruit',
+  'Abnormal CT / CTA',
+  'Abnormal MRI / MRA',
+  'Follow-up known carotid stenosis',
+  'Post carotid endarterectomy',
+  'Post carotid stent',
+  'Suspected subclavian steal',
+  'Other neurological symptoms',
+  'Other'
+];
+
+export const NON_CAROTID_FINDING_TYPES = [
+  'Enlarged lymph node',
+  'Cervical mass',
+  'Lesion',
+  'Thyroid nodule / thyroid lesion',
+  'Salivary gland lesion',
+  'Jugular vein thrombosis / DVT',
+  'Jugular vein dilatation / ectasia',
+  'Venous abnormality',
+  'Collection',
+  'Haematoma',
+  'Other'
+];
 
 export const SAMPLE_CASES = [
   {
