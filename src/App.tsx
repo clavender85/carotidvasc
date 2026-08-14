@@ -421,6 +421,7 @@ export default function App() {
                       onSelectSegment={handleSelectSegment}
                       onAssessSegment={handleAssessSegment}
                       onToggleVariant={() => handleUpdateStudy({ variantLeftBct: !studyData.variantLeftBct })}
+                      onUpdateStudy={handleUpdateStudy}
                     />
 
                     {/* DVT-Style Left/Right Vessel Tree Structured Panels */}

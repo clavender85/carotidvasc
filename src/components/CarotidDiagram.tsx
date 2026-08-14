@@ -1,8 +1,24 @@
 import React, { useState } from 'react';
-import { StudyData, SegmentData } from '../types';
+import { StudyData, SegmentData, ArchVariant, BifurcationVariant } from '../types';
 import { SEGMENTS_META } from '../constants';
 import { checkSubclavianSteal, calculateIcaCcaRatio, suggestIcaStenosisCategory } from '../utils/calculations';
-import { ShieldAlert, ArrowUp, ArrowDown, ArrowUpDown, X, HelpCircle, Activity, Eye, Layers } from 'lucide-react';
+import { ARCH_VARIANTS_META, BIFURCATION_VARIANTS_META } from '../utils/anatomyVariants';
+import {
+  ShieldAlert,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpDown,
+  X,
+  HelpCircle,
+  Activity,
+  Eye,
+  Layers,
+  GitBranch,
+  Check,
+  ChevronDown,
+  Info,
+  Edit3
+} from 'lucide-react';
 
 interface CarotidDiagramProps {
   studyData: StudyData;
@@ -10,7 +26,8 @@ interface CarotidDiagramProps {
   activeSegmentId: string | null;
   onSelectSegment: (id: string, isMulti: boolean) => void;
   onAssessSegment: (id: string) => void;
-  onToggleVariant: () => void;
+  onToggleVariant?: () => void;
+  onUpdateStudy?: (updates: Partial<StudyData>) => void;
 }
 
 export const CarotidDiagram: React.FC<CarotidDiagramProps> = ({
@@ -20,11 +37,12 @@ export const CarotidDiagram: React.FC<CarotidDiagramProps> = ({
   onSelectSegment,
   onAssessSegment,
   onToggleVariant,
+  onUpdateStudy,
 }) => {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
-  // Floating Precision Zoom and Pan States
+  // Precision Zoom and Pan States
   const [zoom, setZoom] = useState<number>(1.0);
   const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   
@@ -32,8 +50,87 @@ export const CarotidDiagram: React.FC<CarotidDiagramProps> = ({
   const [focusMode, setFocusMode] = useState<boolean>(true);
   const [labelDensity, setLabelDensity] = useState<'minimal' | 'full' | 'hidden'>('minimal');
 
+  // Variant change toast state
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [showOtherModal, setShowOtherModal] = useState<boolean>(false);
+  const [customDescription, setCustomDescription] = useState<string>(
+    studyData.anatomyVariants?.otherVariantDescription || ''
+  );
+
   const isRightSteal = checkSubclavianSteal('right', studyData);
   const isLeftSteal = checkSubclavianSteal('left', studyData);
+
+  // Active variants
+  const activeArchVariant: ArchVariant =
+    studyData.anatomyVariants?.archVariant || (studyData.variantLeftBct ? 'bovine_common_origin' : 'standard');
+  const activeBifVariant: BifurcationVariant =
+    studyData.anatomyVariants?.bifurcationVariant || 'normal';
+
+  const triggerToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => {
+      setToastMessage(null);
+    }, 2800);
+  };
+
+  const handleSelectArchVariant = (variant: ArchVariant) => {
+    const isBovine = variant === 'bovine_common_origin';
+    const nextVariants = {
+      ...(studyData.anatomyVariants || {
+        archVariant: 'standard',
+        bifurcationVariant: 'normal',
+        isNonStandard: false,
+      }),
+      archVariant: variant,
+      isNonStandard: variant !== 'standard' || activeBifVariant !== 'normal',
+    };
+
+    if (onUpdateStudy) {
+      onUpdateStudy({
+        anatomyVariants: nextVariants,
+        variantLeftBct: isBovine,
+      });
+    } else if (onToggleVariant && isBovine !== studyData.variantLeftBct) {
+      onToggleVariant();
+    }
+    triggerToast(`Arch Variant: ${ARCH_VARIANTS_META[variant].label} (All measurements preserved)`);
+  };
+
+  const handleSelectBifurcationVariant = (variant: BifurcationVariant) => {
+    const nextVariants = {
+      ...(studyData.anatomyVariants || {
+        archVariant: 'standard',
+        bifurcationVariant: 'normal',
+        isNonStandard: false,
+      }),
+      bifurcationVariant: variant,
+      isNonStandard: activeArchVariant !== 'standard' || variant !== 'normal',
+    };
+
+    if (onUpdateStudy) {
+      onUpdateStudy({
+        anatomyVariants: nextVariants,
+      });
+    }
+    triggerToast(`Carotid Bifurcation Level: ${BIFURCATION_VARIANTS_META[variant].label}`);
+  };
+
+  const handleSaveCustomNotes = () => {
+    if (onUpdateStudy) {
+      onUpdateStudy({
+        anatomyVariants: {
+          ...(studyData.anatomyVariants || {
+            archVariant: 'standard',
+            bifurcationVariant: 'normal',
+            isNonStandard: true,
+          }),
+          otherVariantDescription: customDescription,
+        },
+      });
+    }
+    setShowOtherModal(false);
+    triggerToast('Custom anatomical variant notes saved.');
+  };
 
   const handleSegmentClick = (e: React.MouseEvent, id: string) => {
     e.preventDefault();
@@ -90,6 +187,9 @@ export const CarotidDiagram: React.FC<CarotidDiagramProps> = ({
     }
     return null;
   };
+
+  // Compute bifurcation vertical offset
+  const bifOffset = activeBifVariant === 'high' ? -42 : activeBifVariant === 'low' ? 38 : 0;
 
   // Render a vessel path segment with rich annotations and direct velocities
   const renderVessel = (
@@ -200,7 +300,7 @@ export const CarotidDiagram: React.FC<CarotidDiagramProps> = ({
           />
         )}
 
-        {/* Intraluminal Plaque & Grayscale Morphology Cues (Drawn inside vessel without severity color override) */}
+        {/* Intraluminal Plaque & Grayscale Morphology Cues */}
         {isOccluded ? (
           <>
             <path d={d} fill="none" stroke="#7f1d1d" strokeWidth={finalStrokeWidth - 2} strokeLinecap="round" opacity={0.95} />
@@ -213,10 +313,10 @@ export const CarotidDiagram: React.FC<CarotidDiagramProps> = ({
               d={d}
               fill="none"
               stroke={
-                plaqueComp.includes('hypo') ? '#64748b' : // Hypoechoic = dark soft gray
-                plaqueComp.includes('calc') ? '#1e293b' : // Calcific = dense dark core
-                plaqueComp.includes('echog') || plaqueComp.includes('hyper') ? '#cbd5e1' : // Echogenic = bright silver
-                plaqueComp.includes('mixed') || plaqueComp.includes('hetero') ? '#94a3b8' : '#475569' // Isoechoic = medium gray
+                plaqueComp.includes('hypo') ? '#64748b' :
+                plaqueComp.includes('calc') ? '#1e293b' :
+                plaqueComp.includes('echog') || plaqueComp.includes('hyper') ? '#cbd5e1' :
+                plaqueComp.includes('mixed') || plaqueComp.includes('hetero') ? '#94a3b8' : '#475569'
               }
               strokeWidth={finalStrokeWidth * (isSevere ? 0.75 : isModerate ? 0.55 : 0.35)}
               strokeLinecap="round"
@@ -375,19 +475,21 @@ export const CarotidDiagram: React.FC<CarotidDiagramProps> = ({
   const hoveredData = hoveredId ? studyData.segments[hoveredId] : null;
 
   return (
-    <div id="carotid-diagram-workspace" className="flex flex-col bg-[#0b1329] rounded-xl border border-slate-800 overflow-hidden relative min-h-[620px] shadow-lg">
+    <div id="carotid-diagram-workspace" className="flex flex-col bg-[#0b1329] rounded-xl border border-slate-800 overflow-hidden relative min-h-[640px] shadow-lg">
       
-      {/* Header Info & View Mode Toggle */}
+      {/* 1. Header Toolbar with Title, View Mode & Label Density */}
       <div className="p-4 bg-[#0f172a] border-b border-slate-800 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
-            <span className="text-xs font-black text-slate-100 uppercase tracking-wider">Clinical Hemodynamic Map & Anatomical Workspace</span>
+            <span className="text-xs font-black text-slate-100 uppercase tracking-wider">
+              Clinical Hemodynamic Map & Anatomical Workspace
+            </span>
             <span className="bg-cyan-950/80 border border-cyan-800 text-cyan-300 text-[9px] px-2 py-0.5 rounded font-mono font-bold">
-              {focusMode ? 'Carotid Focus Mode' : 'Full Anatomy View'}
+              {focusMode ? 'Carotid Focus' : 'Full Anatomy'}
             </span>
           </div>
           <span className="text-[10.5px] text-slate-400">
-            Left-click vessels to select. Double-click to document PSV/EDV/Plaque. Ratios & classifications updated live.
+            Click vessel to select. Double-click to document velocities & plaque. Ratios updated live.
           </span>
         </div>
 
@@ -435,6 +537,177 @@ export const CarotidDiagram: React.FC<CarotidDiagramProps> = ({
           </button>
         </div>
       </div>
+
+      {/* 2. Anatomical Variation Tabs Bar (DVT-Style Compact Chips) */}
+      <div className="px-4 py-2.5 bg-[#0b101f] border-b border-slate-800/80 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
+        
+        {/* Left: Arch Variant Selection Tabs */}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1.5 text-slate-400 font-bold uppercase text-[9.5px] tracking-wider shrink-0 mr-1">
+            <GitBranch className="w-3.5 h-3.5 text-cyan-400" />
+            <span>Arch Anatomy:</span>
+          </div>
+
+          <div className="flex items-center bg-[#080d19] border border-slate-700/80 rounded-lg p-0.5 flex-wrap gap-0.5">
+            <button
+              id="tab-variant-standard"
+              onClick={() => handleSelectArchVariant('standard')}
+              className={`px-2.5 py-1 rounded text-[10px] font-bold transition-all cursor-pointer ${
+                activeArchVariant === 'standard'
+                  ? 'bg-cyan-600 text-slate-950 font-black shadow'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+              title="Standard 3-branch arch: BCT, LCCA, L Subclavian"
+            >
+              Standard (3-Branch)
+            </button>
+
+            <button
+              id="tab-variant-bovine"
+              onClick={() => handleSelectArchVariant('bovine_common_origin')}
+              className={`px-2.5 py-1 rounded text-[10px] font-bold transition-all cursor-pointer ${
+                activeArchVariant === 'bovine_common_origin'
+                  ? 'bg-cyan-600 text-slate-950 font-black shadow'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+              title="Bovine / Common Origin: BCT and LCCA share a conjoint origin"
+            >
+              Bovine / Common Origin
+            </button>
+
+            <button
+              id="tab-variant-lvert-arch"
+              onClick={() => handleSelectArchVariant('left_vertebral_from_arch')}
+              className={`px-2.5 py-1 rounded text-[10px] font-bold transition-all cursor-pointer ${
+                activeArchVariant === 'left_vertebral_from_arch'
+                  ? 'bg-cyan-600 text-slate-950 font-black shadow'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+              title="Left Vertebral Artery originates directly from Aortic Arch"
+            >
+              L Vert from Arch
+            </button>
+
+            <button
+              id="tab-variant-aberrant-rsa"
+              onClick={() => handleSelectArchVariant('aberrant_right_subclavian')}
+              className={`px-2.5 py-1 rounded text-[10px] font-bold transition-all cursor-pointer ${
+                activeArchVariant === 'aberrant_right_subclavian'
+                  ? 'bg-cyan-600 text-slate-950 font-black shadow'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+              title="Aberrant Right Subclavian Artery (Arteria Lusoria): 4th branch from distal arch"
+            >
+              Aberrant R Subclavian
+            </button>
+
+            {/* Dropdown for other variants */}
+            <select
+              id="select-more-arch-variants"
+              value={['separate_rcca_and_rsa', 'other'].includes(activeArchVariant) ? activeArchVariant : ''}
+              onChange={(e) => {
+                if (e.target.value) {
+                  handleSelectArchVariant(e.target.value as ArchVariant);
+                }
+              }}
+              className={`bg-[#0f172a] text-[10px] font-bold px-2 py-1 rounded border ${
+                ['separate_rcca_and_rsa', 'other'].includes(activeArchVariant)
+                  ? 'border-cyan-500 text-cyan-300 font-black'
+                  : 'border-slate-700 text-slate-400'
+              } focus:outline-none cursor-pointer`}
+            >
+              <option value="">More Arch Variants...</option>
+              <option value="separate_rcca_and_rsa">Separate RCCA & RSA</option>
+              <option value="other">Other / Custom Variant</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Right: Bifurcation Level Selection Tabs */}
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1.5 text-slate-400 font-bold uppercase text-[9.5px] tracking-wider">
+            <Layers className="w-3.5 h-3.5 text-cyan-400" />
+            <span>Bifurcation Level:</span>
+          </div>
+
+          <div className="flex items-center bg-[#080d19] border border-slate-700/80 rounded-lg p-0.5">
+            <button
+              id="tab-bif-normal"
+              onClick={() => handleSelectBifurcationVariant('normal')}
+              className={`px-2.5 py-1 rounded text-[10px] font-bold transition-all cursor-pointer ${
+                activeBifVariant === 'normal'
+                  ? 'bg-emerald-600 text-slate-950 font-black shadow'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+              title="Standard C3-C4 level bifurcation"
+            >
+              Normal (C3-C4)
+            </button>
+
+            <button
+              id="tab-bif-high"
+              onClick={() => handleSelectBifurcationVariant('high')}
+              className={`px-2.5 py-1 rounded text-[10px] font-bold transition-all cursor-pointer ${
+                activeBifVariant === 'high'
+                  ? 'bg-amber-600 text-slate-950 font-black shadow'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+              title="High Carotid Bifurcation (C1-C2 / Mandibular angle - May limit distal ICA visualization)"
+            >
+              High (C1-C2)
+            </button>
+
+            <button
+              id="tab-bif-low"
+              onClick={() => handleSelectBifurcationVariant('low')}
+              className={`px-2.5 py-1 rounded text-[10px] font-bold transition-all cursor-pointer ${
+                activeBifVariant === 'low'
+                  ? 'bg-cyan-600 text-slate-950 font-black shadow'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+              title="Low Carotid Bifurcation (C5-C6 / Supraclavicular level)"
+            >
+              Low (C5-C6)
+            </button>
+          </div>
+
+          {/* Quick custom notes trigger */}
+          {(activeArchVariant !== 'standard' || activeBifVariant !== 'normal') && (
+            <button
+              id="btn-edit-variant-notes"
+              onClick={() => setShowOtherModal(true)}
+              className="px-2 py-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 rounded text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-colors"
+              title="Edit anatomical notes"
+            >
+              <Edit3 className="w-3 h-3 text-cyan-400" />
+              <span>Notes</span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Confirmation Toast Pill */}
+      {toastMessage && (
+        <div className="absolute top-28 left-1/2 -translate-x-1/2 z-50 bg-[#080d19]/95 border border-cyan-500/80 px-4 py-1.5 rounded-full shadow-2xl backdrop-blur-md flex items-center gap-2 text-xs font-bold text-cyan-200 animate-in fade-in slide-in-from-top-2 duration-200">
+          <Check className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
+      {/* High Bifurcation Window Limitation Warning Banner */}
+      {activeBifVariant === 'high' && (
+        <div className="bg-amber-950/40 border-b border-amber-800/80 px-4 py-2 flex items-center justify-between text-amber-200 text-xs">
+          <div className="flex items-center gap-2">
+            <Info className="w-4 h-4 text-amber-400 shrink-0" />
+            <span className="text-[11px]">
+              <strong>High Carotid Bifurcation (C1-C2):</strong> Acoustic shadowing from mandibular angle may limit distal ICA visualization.
+            </span>
+          </div>
+          <span className="text-[10px] text-amber-300 font-mono font-bold bg-amber-900/50 px-2 py-0.5 rounded border border-amber-700">
+            Mandibular Window Caveat
+          </span>
+        </div>
+      )}
 
       {/* SVG Canvas Container */}
       <div className="p-6 flex items-center justify-center bg-[#070b14] overflow-hidden relative min-h-[580px]">
@@ -509,43 +782,220 @@ export const CarotidDiagram: React.FC<CarotidDiagramProps> = ({
               </text>
             </g>
 
-            {/* ================= RIGHT ARTERIAL SYSTEM (Viewer's Left) ================= */}
-            {/* Brachiocephalic Trunk (BCT) */}
-            {renderVessel('r_bct_prox', 'M 450,590 C 430,565 415,550 400,535', 15, { x: 432, y: 558, align: 'start' })}
-            {renderVessel('r_bct_dist', 'M 400,535 C 385,520 375,510 365,500', 15, { x: 388, y: 512, align: 'start' })}
+            {/* ================= DYNAMIC ARCH CONFIGURATIONS ================= */}
 
-            {/* Subclavian Right */}
-            {renderVessel('r_subcl_prox', 'M 365,500 C 330,502 295,505 260,510', 14, { x: 300, y: 492, align: 'middle' }, { x: 300, y: 524, align: 'middle' })}
+            {/* VARIANT A: BOVINE / COMMON ORIGIN */}
+            {activeArchVariant === 'bovine_common_origin' && (
+              <>
+                {/* Conjoint Root */}
+                <path
+                  d="M 485,590 C 480,575 475,560 470,545"
+                  fill="none"
+                  stroke={activeSegmentId === 'r_bct_prox' || selectedSegmentIds.includes('r_bct_prox') ? '#22d3ee' : '#334155'}
+                  strokeWidth={20}
+                  strokeLinecap="round"
+                />
+                <text x="470" y="565" textAnchor="middle" className="text-[7.5px] font-black fill-cyan-400 select-none">
+                  COMMON ORIGIN
+                </text>
+
+                {/* BCT to right */}
+                {renderVessel('r_bct_prox', 'M 470,545 C 430,530 395,515 365,500', 15, { x: 410, y: 535, align: 'end' })}
+                {renderVessel('r_bct_dist', 'M 400,520 C 385,510 375,505 365,500', 15, { x: 388, y: 512, align: 'start' })}
+
+                {/* Subclavian Right */}
+                {renderVessel('r_subcl_prox', 'M 365,500 C 330,502 295,505 260,510', 14, { x: 300, y: 492, align: 'middle' }, { x: 300, y: 524, align: 'middle' })}
+
+                {/* Left CCA Proximal: Branches from common trunk! */}
+                {renderVessel('l_cca_prox', 'M 470,545 C 520,530 580,480 635,420', 14, { x: 575, y: 510, align: 'start' }, { x: 530, y: 510, align: 'end' })}
+
+                {/* Left Subclavian Proximal */}
+                {renderVessel('l_subcl_prox', 'M 580,590 C 630,550 685,525 740,510', 14, { x: 700, y: 492, align: 'middle' }, { x: 700, y: 524, align: 'middle' })}
+
+                {/* Left Vertebral from Subclavian */}
+                {renderVessel('l_vert_prox', 'M 705,508 C 707,475 709,440 712,410', 10, { x: 724, y: 460, align: 'start' }, { x: 696, y: 460, align: 'end' })}
+              </>
+            )}
+
+            {/* VARIANT B: LEFT VERTEBRAL DIRECT FROM ARCH */}
+            {activeArchVariant === 'left_vertebral_from_arch' && (
+              <>
+                {/* Right BCT & Subclavian (Standard) */}
+                {renderVessel('r_bct_prox', 'M 450,590 C 430,565 415,550 400,535', 15, { x: 432, y: 558, align: 'start' })}
+                {renderVessel('r_bct_dist', 'M 400,535 C 385,520 375,510 365,500', 15, { x: 388, y: 512, align: 'start' })}
+                {renderVessel('r_subcl_prox', 'M 365,500 C 330,502 295,505 260,510', 14, { x: 300, y: 492, align: 'middle' }, { x: 300, y: 524, align: 'middle' })}
+
+                {/* Left CCA Proximal: 2nd branch from arch */}
+                {renderVessel('l_cca_prox', 'M 515,590 C 550,540 595,480 635,420', 14, { x: 658, y: 480, align: 'start' }, { x: 585, y: 480, align: 'end' })}
+
+                {/* Left Vertebral Proximal: 3rd branch arising DIRECTLY from arch! */}
+                {renderVessel('l_vert_prox', 'M 565,590 C 605,540 665,470 712,410', 11, { x: 615, y: 535, align: 'start' }, { x: 580, y: 535, align: 'end' })}
+                <text x="575" y="575" textAnchor="middle" className="text-[7px] font-black fill-cyan-300 select-none">
+                  L VERT ARCH ORIGIN
+                </text>
+
+                {/* Left Subclavian Proximal: 4th branch from arch */}
+                {renderVessel('l_subcl_prox', 'M 615,590 C 660,550 700,525 740,510', 14, { x: 700, y: 492, align: 'middle' }, { x: 700, y: 524, align: 'middle' })}
+              </>
+            )}
+
+            {/* VARIANT C: ABERRANT RIGHT SUBCLAVIAN ARTERY (ARSA / ARTERIA LUSORIA) */}
+            {activeArchVariant === 'aberrant_right_subclavian' && (
+              <>
+                {/* Right CCA Proximal: Arises directly from Arch as 1st branch (No BCT) */}
+                {renderVessel('r_cca_prox', 'M 440,590 C 410,540 380,480 365,420', 14, { x: 342, y: 460, align: 'end' }, { x: 382, y: 460, align: 'start' })}
+
+                {/* Left CCA Proximal: 2nd branch from Arch */}
+                {renderVessel('l_cca_prox', 'M 510,590 C 550,540 595,480 635,420', 14, { x: 658, y: 480, align: 'start' }, { x: 585, y: 480, align: 'end' })}
+
+                {/* Left Subclavian Proximal: 3rd branch from Arch */}
+                {renderVessel('l_subcl_prox', 'M 575,590 C 625,550 685,525 740,510', 14, { x: 700, y: 492, align: 'middle' }, { x: 700, y: 524, align: 'middle' })}
+                {renderVessel('l_vert_prox', 'M 705,508 C 707,475 709,440 712,410', 10, { x: 724, y: 460, align: 'start' }, { x: 696, y: 460, align: 'end' })}
+
+                {/* Aberrant Right Subclavian: 4th branch from distal arch crossing retroesophageally to right */}
+                {renderVessel('r_subcl_prox', 'M 630,590 C 520,565 380,540 295,515 L 260,510', 14, { x: 420, y: 545, align: 'middle' }, { x: 420, y: 565, align: 'middle' })}
+                <text x="440" y="555" textAnchor="middle" className="text-[7.5px] font-black fill-amber-300 select-none">
+                  ABERRANT RSA (ARTERIA LUSORIA)
+                </text>
+              </>
+            )}
+
+            {/* VARIANT D: SEPARATE RCCA AND RSA */}
+            {activeArchVariant === 'separate_rcca_and_rsa' && (
+              <>
+                {/* 1st Branch: Right Subclavian Artery direct from arch */}
+                {renderVessel('r_subcl_prox', 'M 390,590 C 350,560 305,535 260,510', 14, { x: 300, y: 492, align: 'middle' }, { x: 300, y: 524, align: 'middle' })}
+
+                {/* 2nd Branch: Right CCA direct from arch */}
+                {renderVessel('r_cca_prox', 'M 460,590 C 430,540 395,480 365,420', 14, { x: 342, y: 460, align: 'end' }, { x: 382, y: 460, align: 'start' })}
+
+                {/* 3rd Branch: Left CCA direct from arch */}
+                {renderVessel('l_cca_prox', 'M 530,590 C 565,540 600,480 635,420', 14, { x: 658, y: 480, align: 'start' }, { x: 585, y: 480, align: 'end' })}
+
+                {/* 4th Branch: Left Subclavian direct from arch */}
+                {renderVessel('l_subcl_prox', 'M 590,590 C 640,550 690,525 740,510', 14, { x: 700, y: 492, align: 'middle' }, { x: 700, y: 524, align: 'middle' })}
+                {renderVessel('l_vert_prox', 'M 705,508 C 707,475 709,440 712,410', 10, { x: 724, y: 460, align: 'start' }, { x: 696, y: 460, align: 'end' })}
+              </>
+            )}
+
+            {/* VARIANT E: STANDARD 3-VESSEL ARCH (OR OTHER) */}
+            {(activeArchVariant === 'standard' || activeArchVariant === 'other') && (
+              <>
+                {/* Brachiocephalic Trunk (BCT) */}
+                {renderVessel('r_bct_prox', 'M 450,590 C 430,565 415,550 400,535', 15, { x: 432, y: 558, align: 'start' })}
+                {renderVessel('r_bct_dist', 'M 400,535 C 385,520 375,510 365,500', 15, { x: 388, y: 512, align: 'start' })}
+
+                {/* Subclavian Right */}
+                {renderVessel('r_subcl_prox', 'M 365,500 C 330,502 295,505 260,510', 14, { x: 300, y: 492, align: 'middle' }, { x: 300, y: 524, align: 'middle' })}
+
+                {/* Left CCA Proximal */}
+                {renderVessel('l_cca_prox', 'M 540,590 C 570,535 600,480 635,420', 14, { x: 658, y: 480, align: 'start' }, { x: 595, y: 480, align: 'end' })}
+
+                {/* Left Subclavian Proximal */}
+                {renderVessel('l_subcl_prox', 'M 580,590 C 630,550 685,525 740,510', 14, { x: 700, y: 492, align: 'middle' }, { x: 700, y: 524, align: 'middle' })}
+
+                {/* Left Vertebral Proximal */}
+                {renderVessel('l_vert_prox', 'M 705,508 C 707,475 709,440 712,410', 10, { x: 724, y: 460, align: 'start' }, { x: 696, y: 460, align: 'end' })}
+              </>
+            )}
+
+            {/* ================= COMMON DISTAL SUBCLAVIAN & VERTEBRAL SECTORS ================= */}
+            {/* Distal Subclavian Arteries */}
             {renderVessel('r_subcl_dist', 'M 260,510 C 220,515 180,520 140,525', 13, { x: 190, y: 504, align: 'middle' }, { x: 190, y: 536, align: 'middle' })}
+            {renderVessel('l_subcl_dist', 'M 740,510 C 780,515 820,520 860,525', 13, { x: 810, y: 504, align: 'middle' }, { x: 810, y: 536, align: 'middle' })}
 
-            {/* Vertebral Right */}
+            {/* Vertebral Arteries (Mid & Distal) */}
             {renderVessel('r_vert_prox', 'M 295,508 C 293,475 291,440 288,410', 10, { x: 278, y: 460, align: 'end' }, { x: 304, y: 460, align: 'start' })}
             {renderVessel('r_vert_mid', 'M 288,410 C 284,350 280,290 276,230', 9, { x: 268, y: 310, align: 'end' }, { x: 292, y: 310, align: 'start' })}
             {renderVessel('r_vert_dist', 'M 276,230 C 274,180 272,130 270,80', 8, { x: 258, y: 140, align: 'end' }, { x: 284, y: 140, align: 'start' })}
 
-            {/* Common Carotid Artery (CCA) Right (Labels at left ~340, Velocities immediately adjacent at right ~382) */}
-            {renderVessel('r_cca_prox', 'M 365,500 C 365,475 365,450 365,420', 14, { x: 342, y: 460, align: 'end' }, { x: 382, y: 460, align: 'start' })}
-            {renderVessel('r_cca_mid', 'M 365,420 C 365,360 365,310 365,260', 14, { x: 342, y: 340, align: 'end' }, { x: 382, y: 340, align: 'start' })}
-            {renderVessel('r_cca_dist', 'M 365,260 C 365,240 365,220 365,200', 14, { x: 342, y: 235, align: 'end' }, { x: 382, y: 235, align: 'start' })}
+            {renderVessel('l_vert_mid', 'M 712,410 C 716,350 720,290 724,230', 9, { x: 734, y: 310, align: 'start' }, { x: 706, y: 310, align: 'end' })}
+            {renderVessel('l_vert_dist', 'M 724,230 C 726,180 728,130 730,80', 8, { x: 742, y: 140, align: 'start' }, { x: 716, y: 140, align: 'end' })}
 
-            {/* Carotid Bulb Right (Enlarged Bifurcation Zone) */}
-            {renderVessel('r_bulb', 'M 365,200 Q 365,175 365,150', 18, { x: 338, y: 175, align: 'end' })}
 
-            {/* Internal Carotid Artery (ICA) Right */}
-            {renderVessel('r_ica_prox', 'M 358,150 C 345,135 340,120 335,100', 12, { x: 322, y: 125, align: 'end' }, { x: 356, y: 125, align: 'start' })}
-            {renderVessel('r_ica_mid', 'M 335,100 C 330,85 328,70 325,50', 11, { x: 308, y: 75, align: 'end' }, { x: 342, y: 75, align: 'start' })}
-            {renderVessel('r_ica_dist', 'M 325,50 C 322,35 320,20 318,5', 10, { x: 300, y: 25, align: 'end' }, { x: 334, y: 25, align: 'start' })}
+            {/* ================= RIGHT CAROTID SYSTEM (With Dynamic Bifurcation Level) ================= */}
+            {/* Right CCA Proximal (if not rendered above) */}
+            {activeArchVariant !== 'aberrant_right_subclavian' && activeArchVariant !== 'separate_rcca_and_rsa' && (
+              renderVessel('r_cca_prox', 'M 365,500 C 365,475 365,450 365,420', 14, { x: 342, y: 460, align: 'end' }, { x: 382, y: 460, align: 'start' })
+            )}
 
-            {/* External Carotid Artery (ECA) Right */}
-            {renderVessel('r_eca_prox', 'M 372,150 C 382,135 388,120 395,100', 11, { x: 408, y: 125, align: 'start' }, { x: 374, y: 125, align: 'end' })}
-            {renderVessel('r_eca_mid', 'M 395,100 C 400,85 402,70 405,50', 10, { x: 420, y: 75, align: 'start' }, { x: 388, y: 75, align: 'end' })}
-            {renderVessel('r_eca_dist', 'M 405,50 C 408,35 410,20 412,5', 9, { x: 428, y: 25, align: 'start' }, { x: 396, y: 25, align: 'end' })}
+            {/* Right CCA Mid */}
+            {renderVessel(
+              'r_cca_mid',
+              `M 365,420 C 365,${360 + bifOffset * 0.3} 365,${310 + bifOffset * 0.6} 365,${260 + bifOffset * 0.8}`,
+              14,
+              { x: 342, y: 340 + bifOffset * 0.4, align: 'end' },
+              { x: 382, y: 340 + bifOffset * 0.4, align: 'start' }
+            )}
 
-            {/* Right Bifurcation Classification Indicator */}
+            {/* Right CCA Distal (Reference segment) */}
+            {renderVessel(
+              'r_cca_dist',
+              `M 365,${260 + bifOffset * 0.8} C 365,${240 + bifOffset * 0.9} 365,${220 + bifOffset * 0.95} 365,${200 + bifOffset}`,
+              14,
+              { x: 342, y: 235 + bifOffset * 0.9, align: 'end' },
+              { x: 382, y: 235 + bifOffset * 0.9, align: 'start' }
+            )}
+
+            {/* Right Carotid Bulb */}
+            {renderVessel(
+              'r_bulb',
+              `M 365,${200 + bifOffset} Q 365,${175 + bifOffset} 365,${150 + bifOffset}`,
+              18,
+              { x: 338, y: 175 + bifOffset, align: 'end' }
+            )}
+
+            {/* Right Internal Carotid Artery (ICA) */}
+            {renderVessel(
+              'r_ica_prox',
+              `M 358,${150 + bifOffset} C 345,${135 + bifOffset * 0.8} 340,${120 + bifOffset * 0.6} 335,${100 + bifOffset * 0.4}`,
+              12,
+              { x: 322, y: 125 + bifOffset * 0.7, align: 'end' },
+              { x: 356, y: 125 + bifOffset * 0.7, align: 'start' }
+            )}
+            {renderVessel(
+              'r_ica_mid',
+              `M 335,${100 + bifOffset * 0.4} C 330,${85 + bifOffset * 0.25} 328,70 325,50`,
+              11,
+              { x: 308, y: 75 + bifOffset * 0.25, align: 'end' },
+              { x: 342, y: 75 + bifOffset * 0.25, align: 'start' }
+            )}
+            {renderVessel(
+              'r_ica_dist',
+              'M 325,50 C 322,35 320,20 318,5',
+              10,
+              { x: 300, y: 25, align: 'end' },
+              { x: 334, y: 25, align: 'start' }
+            )}
+
+            {/* Right External Carotid Artery (ECA) */}
+            {renderVessel(
+              'r_eca_prox',
+              `M 372,${150 + bifOffset} C 382,${135 + bifOffset * 0.8} 388,${120 + bifOffset * 0.6} 395,${100 + bifOffset * 0.4}`,
+              11,
+              { x: 408, y: 125 + bifOffset * 0.7, align: 'start' },
+              { x: 374, y: 125 + bifOffset * 0.7, align: 'end' }
+            )}
+            {renderVessel(
+              'r_eca_mid',
+              `M 395,${100 + bifOffset * 0.4} C 400,${85 + bifOffset * 0.25} 402,70 405,50`,
+              10,
+              { x: 420, y: 75 + bifOffset * 0.25, align: 'start' },
+              { x: 388, y: 75 + bifOffset * 0.25, align: 'end' }
+            )}
+            {renderVessel(
+              'r_eca_dist',
+              'M 405,50 C 408,35 410,20 412,5',
+              9,
+              { x: 428, y: 25, align: 'start' },
+              { x: 396, y: 25, align: 'end' }
+            )}
+
+            {/* Right Bifurcation Classification Badge */}
             {rightEval && rightEval.category && rightEval.category !== 'Not Assessed' && (
               <text
                 x="365"
-                y="142"
+                y={142 + bifOffset}
                 textAnchor="middle"
                 className={`text-[8.5px] font-mono font-black select-none ${
                   rightEval.category.includes('Severe') || rightEval.category.includes('80') || rightEval.category.includes('70') ? 'fill-rose-400' :
@@ -563,50 +1013,84 @@ export const CarotidDiagram: React.FC<CarotidDiagramProps> = ({
             )}
 
 
-            {/* ================= LEFT ARTERIAL SYSTEM (Viewer's Right) ================= */}
-            {studyData.variantLeftBct ? (
-              <>
-                {renderVessel('l_bct_prox', 'M 550,590 C 570,565 585,550 600,535', 15, { x: 568, y: 558, align: 'end' })}
-                {renderVessel('l_bct_dist', 'M 600,535 C 615,520 625,510 635,500', 15, { x: 612, y: 512, align: 'end' })}
-                {renderVessel('l_cca_prox', 'M 635,500 C 635,475 635,450 635,420', 14, { x: 658, y: 460, align: 'start' }, { x: 618, y: 460, align: 'end' })}
-                {renderVessel('l_subcl_prox', 'M 635,500 C 670,502 705,505 740,510', 14, { x: 700, y: 492, align: 'middle' }, { x: 700, y: 524, align: 'middle' })}
-              </>
-            ) : (
-              <>
-                {renderVessel('l_cca_prox', 'M 540,590 C 570,535 600,480 635,420', 14, { x: 658, y: 480, align: 'start' }, { x: 595, y: 480, align: 'end' })}
-                {renderVessel('l_subcl_prox', 'M 580,590 C 630,550 685,525 740,510', 14, { x: 700, y: 492, align: 'middle' }, { x: 700, y: 524, align: 'middle' })}
-              </>
+            {/* ================= LEFT CAROTID SYSTEM (With Dynamic Bifurcation Level) ================= */}
+            {/* Left CCA Mid */}
+            {renderVessel(
+              'l_cca_mid',
+              `M 635,420 C 635,${360 + bifOffset * 0.3} 635,${310 + bifOffset * 0.6} 635,${260 + bifOffset * 0.8}`,
+              14,
+              { x: 658, y: 340 + bifOffset * 0.4, align: 'start' },
+              { x: 618, y: 340 + bifOffset * 0.4, align: 'end' }
             )}
 
-            {renderVessel('l_subcl_dist', 'M 740,510 C 780,515 820,520 860,525', 13, { x: 810, y: 504, align: 'middle' }, { x: 810, y: 536, align: 'middle' })}
+            {/* Left CCA Distal */}
+            {renderVessel(
+              'l_cca_dist',
+              `M 635,${260 + bifOffset * 0.8} C 635,${240 + bifOffset * 0.9} 635,${220 + bifOffset * 0.95} 635,${200 + bifOffset}`,
+              14,
+              { x: 658, y: 235 + bifOffset * 0.9, align: 'start' },
+              { x: 618, y: 235 + bifOffset * 0.9, align: 'end' }
+            )}
 
-            {/* Vertebral Left */}
-            {renderVessel('l_vert_prox', 'M 705,508 C 707,475 709,440 712,410', 10, { x: 724, y: 460, align: 'start' }, { x: 696, y: 460, align: 'end' })}
-            {renderVessel('l_vert_mid', 'M 712,410 C 716,350 720,290 724,230', 9, { x: 734, y: 310, align: 'start' }, { x: 706, y: 310, align: 'end' })}
-            {renderVessel('l_vert_dist', 'M 724,230 C 726,180 728,130 730,80', 8, { x: 742, y: 140, align: 'start' }, { x: 716, y: 140, align: 'end' })}
+            {/* Left Carotid Bulb */}
+            {renderVessel(
+              'l_bulb',
+              `M 635,${200 + bifOffset} Q 635,${175 + bifOffset} 635,${150 + bifOffset}`,
+              18,
+              { x: 662, y: 175 + bifOffset, align: 'start' }
+            )}
 
-            {/* Common Carotid Artery (CCA) Left (Labels at right ~658, Velocities immediately adjacent at left ~618) */}
-            {renderVessel('l_cca_mid', 'M 635,420 C 635,360 635,310 635,260', 14, { x: 658, y: 340, align: 'start' }, { x: 618, y: 340, align: 'end' })}
-            {renderVessel('l_cca_dist', 'M 635,260 C 635,240 635,220 635,200', 14, { x: 658, y: 235, align: 'start' }, { x: 618, y: 235, align: 'end' })}
+            {/* Left Internal Carotid Artery (ICA) */}
+            {renderVessel(
+              'l_ica_prox',
+              `M 642,${150 + bifOffset} C 655,${135 + bifOffset * 0.8} 660,${120 + bifOffset * 0.6} 665,${100 + bifOffset * 0.4}`,
+              12,
+              { x: 678, y: 125 + bifOffset * 0.7, align: 'start' },
+              { x: 642, y: 125 + bifOffset * 0.7, align: 'end' }
+            )}
+            {renderVessel(
+              'l_ica_mid',
+              `M 665,${100 + bifOffset * 0.4} C 670,${85 + bifOffset * 0.25} 672,70 675,50`,
+              11,
+              { x: 692, y: 75 + bifOffset * 0.25, align: 'start' },
+              { x: 658, y: 75 + bifOffset * 0.25, align: 'end' }
+            )}
+            {renderVessel(
+              'l_ica_dist',
+              'M 675,50 C 678,35 680,20 682,5',
+              10,
+              { x: 700, y: 25, align: 'start' },
+              { x: 665, y: 25, align: 'end' }
+            )}
 
-            {/* Carotid Bulb Left */}
-            {renderVessel('l_bulb', 'M 635,200 Q 635,175 635,150', 18, { x: 662, y: 175, align: 'start' })}
+            {/* Left External Carotid Artery (ECA) */}
+            {renderVessel(
+              'l_eca_prox',
+              `M 628,${150 + bifOffset} C 618,${135 + bifOffset * 0.8} 612,${120 + bifOffset * 0.6} 605,${100 + bifOffset * 0.4}`,
+              11,
+              { x: 592, y: 125 + bifOffset * 0.7, align: 'end' },
+              { x: 628, y: 125 + bifOffset * 0.7, align: 'start' }
+            )}
+            {renderVessel(
+              'l_eca_mid',
+              `M 605,${100 + bifOffset * 0.4} C 600,${85 + bifOffset * 0.25} 598,70 595,50`,
+              10,
+              { x: 580, y: 75 + bifOffset * 0.25, align: 'end' },
+              { x: 612, y: 75 + bifOffset * 0.25, align: 'start' }
+            )}
+            {renderVessel(
+              'l_eca_dist',
+              'M 595,50 C 592,35 590,20 588,5',
+              9,
+              { x: 572, y: 25, align: 'end' },
+              { x: 604, y: 25, align: 'start' }
+            )}
 
-            {/* Internal Carotid Artery (ICA) Left */}
-            {renderVessel('l_ica_prox', 'M 642,150 C 655,135 660,120 665,100', 12, { x: 678, y: 125, align: 'start' }, { x: 642, y: 125, align: 'end' })}
-            {renderVessel('l_ica_mid', 'M 665,100 C 670,85 672,70 675,50', 11, { x: 692, y: 75, align: 'start' }, { x: 658, y: 75, align: 'end' })}
-            {renderVessel('l_ica_dist', 'M 675,50 C 678,35 680,20 682,5', 10, { x: 700, y: 25, align: 'start' }, { x: 665, y: 25, align: 'end' })}
-
-            {/* External Carotid Artery (ECA) Left */}
-            {renderVessel('l_eca_prox', 'M 628,150 C 618,135 612,120 605,100', 11, { x: 592, y: 125, align: 'end' }, { x: 628, y: 125, align: 'start' })}
-            {renderVessel('l_eca_mid', 'M 605,100 C 600,85 598,70 595,50', 10, { x: 580, y: 75, align: 'end' }, { x: 612, y: 75, align: 'start' })}
-            {renderVessel('l_eca_dist', 'M 595,50 C 592,35 590,20 588,5', 9, { x: 572, y: 25, align: 'end' }, { x: 604, y: 25, align: 'start' })}
-
-            {/* Left Bifurcation Classification Indicator */}
+            {/* Left Bifurcation Classification Badge */}
             {leftEval && leftEval.category && leftEval.category !== 'Not Assessed' && (
               <text
                 x="635"
-                y="142"
+                y={142 + bifOffset}
                 textAnchor="middle"
                 className={`text-[8.5px] font-mono font-black select-none ${
                   leftEval.category.includes('Severe') || leftEval.category.includes('80') || leftEval.category.includes('70') ? 'fill-rose-400' :
@@ -699,6 +1183,58 @@ export const CarotidDiagram: React.FC<CarotidDiagramProps> = ({
             <span className="font-bold text-amber-300">Retrograde Flow Alerts Detected:</span>{' '}
             {isRightSteal && <span className="font-medium mr-4">Right vertebral flow is retrograde. Review Right Subclavian Artery.</span>}
             {isLeftSteal && <span className="font-medium">Left vertebral flow is retrograde. Review Left Subclavian Artery.</span>}
+          </div>
+        </div>
+      )}
+
+      {/* Modal / Dialog for Custom Anatomical Notes */}
+      {showOtherModal && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4 backdrop-blur-xs">
+          <div className="bg-[#0b1329] border border-slate-700 rounded-xl p-5 max-w-lg w-full shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <GitBranch className="w-4 h-4 text-cyan-400" />
+                <h3 className="text-sm font-black uppercase text-slate-100">
+                  Anatomical Variation Sonographer Notes
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowOtherModal(false)}
+                className="text-slate-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-2 text-xs">
+              <label className="block font-bold text-slate-300">
+                Detailed Variation Description / Branching Pattern:
+              </label>
+              <textarea
+                value={customDescription}
+                onChange={(e) => setCustomDescription(e.target.value)}
+                placeholder="e.g. Left vertebral artery enters transverse foramen at C5 instead of C6; Conjoint trunk of BCT and LCCA observed..."
+                className="w-full h-28 bg-[#080d19] border border-slate-700 rounded-lg p-3 text-slate-100 focus:border-cyan-500 focus:outline-none"
+              />
+              <span className="text-[10.5px] text-slate-400 block">
+                These notes will be incorporated into the structured clinical report's Anatomical Variation section.
+              </span>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
+              <button
+                onClick={() => setShowOtherModal(false)}
+                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs font-bold cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveCustomNotes}
+                className="px-4 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-slate-950 rounded text-xs font-black cursor-pointer shadow"
+              >
+                Save Notes
+              </button>
+            </div>
           </div>
         </div>
       )}

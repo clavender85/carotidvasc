@@ -1,4 +1,4 @@
-import { SegmentData, CustomThresholds, StudyData } from './types';
+import { SegmentData, CustomThresholds, StudyData, ArchVariant } from './types';
 
 export interface SegmentMeta {
   id: string;
@@ -341,17 +341,36 @@ export const DEFAULT_CUSTOM_THRESHOLDS: CustomThresholds = {
   stenosis70MaxRatio: 4.0,
 };
 
-export function getUpstreamPath(segmentId: string, variantLeftBct: boolean): string[] {
+export function getUpstreamPath(segmentId: string, variantLeftBctOrArchVariant?: boolean | ArchVariant): string[] {
   const meta = SEGMENTS_META[segmentId];
   if (!meta) return [];
 
-  // If left side and variant BCT is active, the upstream connections for left CCA and left subclavian change
+  const archVariant: ArchVariant = typeof variantLeftBctOrArchVariant === 'string'
+    ? variantLeftBctOrArchVariant
+    : (variantLeftBctOrArchVariant ? 'bovine_common_origin' : 'standard');
+
+  // Left Vertebral direct from Arch variant
+  if (archVariant === 'left_vertebral_from_arch' && segmentId.startsWith('l_vert_')) {
+    if (segmentId === 'l_vert_prox') return ['arch'];
+    if (segmentId === 'l_vert_mid') return ['l_vert_prox', 'arch'];
+    if (segmentId === 'l_vert_dist') return ['l_vert_mid', 'l_vert_prox', 'arch'];
+  }
+
+  // Aberrant Right Subclavian or Separate RCCA/RSA: RCCA directly from arch (no BCT)
+  if ((archVariant === 'aberrant_right_subclavian' || archVariant === 'separate_rcca_and_rsa') && segmentId.startsWith('r_')) {
+    if (segmentId === 'r_cca_prox') return ['arch'];
+    if (segmentId === 'r_subcl_prox') return ['arch'];
+    if (segmentId === 'r_bct_prox' || segmentId === 'r_bct_dist') return ['arch'];
+    if (meta.type === 'cca' || meta.type === 'bulb' || meta.type === 'ica' || meta.type === 'eca') {
+      return meta.upstreamPath.filter(stop => stop !== 'r_bct_dist' && stop !== 'r_bct_prox');
+    }
+  }
+
+  // If left side and bovine/variant BCT is active
   if (segmentId.startsWith('l_')) {
-    if (variantLeftBct) {
+    const isBovine = archVariant === 'bovine_common_origin';
+    if (isBovine) {
       if (segmentId === 'l_cca_prox') {
-        return ['l_bct_dist', 'l_bct_prox', 'arch'];
-      }
-      if (segmentId === 'l_subcl_prox') {
         return ['l_bct_dist', 'l_bct_prox', 'arch'];
       }
     } else {
@@ -360,16 +379,13 @@ export function getUpstreamPath(segmentId: string, variantLeftBct: boolean): str
       }
     }
 
-    // Dynamic reconstruction for rest of left-side segments when variant is active
+    // Dynamic reconstruction for rest of left-side segments when bovine is active
     const standardPath = meta.upstreamPath;
     const pathWithBct: string[] = [];
     for (const stop of standardPath) {
-      if (stop === 'arch' && variantLeftBct) {
+      if (stop === 'arch' && isBovine) {
         if (meta.type === 'cca' || meta.type === 'bulb' || meta.type === 'ica' || meta.type === 'eca') {
           pathWithBct.push('l_cca_prox', 'l_bct_dist', 'l_bct_prox', 'arch');
-          break;
-        } else if (meta.type === 'subclavian' || meta.type === 'vertebral') {
-          pathWithBct.push('l_subcl_prox', 'l_bct_dist', 'l_bct_prox', 'arch');
           break;
         }
       }
@@ -430,6 +446,12 @@ export function getInitialStudyData(): StudyData {
       left: { suggested: 'Not Classified', confirmed: 'Not Classified' },
     },
     variantLeftBct: false,
+    anatomyVariants: {
+      archVariant: 'standard',
+      bifurcationVariant: 'normal',
+      otherDescription: '',
+      variantNotes: '',
+    },
     classificationSystem: 'ASUM_2021',
     imtThresholdMm: 1.1,
     customThresholds: { ...DEFAULT_CUSTOM_THRESHOLDS },

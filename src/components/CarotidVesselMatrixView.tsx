@@ -47,7 +47,7 @@ export const CarotidVesselMatrixView: React.FC<CarotidVesselMatrixViewProps> = (
     { rowLabel: 'Vertebral Artery (V3 / Distal)', category: 'vert', rightId: 'r_vert_dist', leftId: 'l_vert_dist' },
     { rowLabel: 'Subclavian Artery (Proximal)', category: 'subcl', rightId: 'r_subcl_prox', leftId: 'l_subcl_prox' },
     { rowLabel: 'Subclavian Artery (Distal)', category: 'subcl', rightId: 'r_subcl_dist', leftId: 'l_subcl_dist' },
-    { rowLabel: 'Brachiocephalic Trunk (BCT)', category: 'bct', rightId: 'r_bct_prox', leftId: studyData.variantLeftBct ? 'l_bct_prox' : null },
+    { rowLabel: 'Brachiocephalic Trunk (BCT)', category: 'bct', rightId: 'r_bct_prox', leftId: (studyData.variantLeftBct || studyData.anatomyVariants?.archVariant === 'bovine_common_origin') ? 'l_bct_prox' : null },
   ];
 
   const renderFlowIcon = (dir: FlowDirection) => {

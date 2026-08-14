@@ -169,5 +169,33 @@ export function validateCarotidStudy(study: StudyData): ValidationIssue[] {
     }
   });
 
+  // 4. Anatomical Variation Checks
+  const archVariant = study.anatomyVariants?.archVariant;
+  const bifurcationVariant = study.anatomyVariants?.bifurcationVariant;
+
+  if (archVariant === 'other' && !study.anatomyVariants?.otherDescription?.trim()) {
+    issues.push({
+      id: 'variant-other-missing-description',
+      severity: 'info',
+      category: 'completeness',
+      title: 'Custom Anatomical Variant Description Missing',
+      message: 'You selected "Other / Custom Variant". Please add a descriptive note explaining the vascular anatomy.',
+    });
+  }
+
+  if (bifurcationVariant === 'high') {
+    const rIcaDist = study.segments['r_ica_dist'];
+    const lIcaDist = study.segments['l_ica_dist'];
+    if ((rIcaDist && rIcaDist.psv === null) || (lIcaDist && lIcaDist.psv === null)) {
+      issues.push({
+        id: 'high-bifurcation-distal-ica-note',
+        severity: 'info',
+        category: 'protocol',
+        title: 'High Bifurcation Acoustic Window',
+        message: 'High carotid bifurcation may limit distal ICA visualization behind the angle of the mandible. Verify if technical limitations apply.',
+      });
+    }
+  }
+
   return issues;
 }

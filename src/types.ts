@@ -42,6 +42,26 @@ export interface PlaqueData {
 
 export type ClassificationSystem = 'ASUM_2021' | 'SRU_2003' | 'MODIFIED_SRU_2021' | 'NASCET_INDEX' | 'CUSTOM';
 
+export type ArchVariant =
+  | 'standard'
+  | 'bovine_common_origin'
+  | 'left_vertebral_from_arch'
+  | 'aberrant_right_subclavian'
+  | 'separate_rcca_and_rsa'
+  | 'other';
+
+export type BifurcationVariant =
+  | 'normal'
+  | 'high'
+  | 'low';
+
+export interface AnatomyVariantState {
+  archVariant: ArchVariant;
+  bifurcationVariant: BifurcationVariant;
+  otherDescription?: string;
+  variantNotes?: string;
+}
+
 export interface CustomThresholds {
   normalMaxPsv: number;
   stenosis50MaxPsv: number;
@@ -114,6 +134,7 @@ export interface StudyData {
     };
   };
   variantLeftBct: boolean;
+  anatomyVariants: AnatomyVariantState;
   classificationSystem: ClassificationSystem;
   imtThresholdMm: number;
   customThresholds: CustomThresholds;

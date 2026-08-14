@@ -3,7 +3,8 @@ import { StudyData } from '../types';
 import { generateSideSummary, checkCcaSuitability, generateClinicalImpressionNarrative } from '../utils/calculations';
 import { validateCarotidStudy, ValidationIssue } from '../utils/validationEngine';
 import { SEGMENTS_META } from '../constants';
-import { FileText, Copy, Printer, Check, Clipboard, RefreshCw, AlertTriangle, ChevronRight, Sparkles, ShieldCheck, ShieldAlert, CheckCircle2, UserCheck, AlertCircle } from 'lucide-react';
+import { getAnatomicalVariationReportSentences, ARCH_VARIANTS_META, BIFURCATION_VARIANTS_META } from '../utils/anatomyVariants';
+import { FileText, Copy, Printer, Check, Clipboard, RefreshCw, AlertTriangle, ChevronRight, Sparkles, ShieldCheck, ShieldAlert, CheckCircle2, UserCheck, AlertCircle, GitBranch, Layers } from 'lucide-react';
 
 interface ClinicalReportProps {
   studyData: StudyData;
@@ -144,6 +145,16 @@ export const ClinicalReport: React.FC<ClinicalReportProps> = ({
     text += `  - Max Plaque Site: ${l.maxPlaqueLocation || 'None detected'}\n`;
     text += `  - Vertebral Flow: ${l.vertebralFlowDirection.toUpperCase()}\n`;
     text += `  - Subclavian Findings: ${l.subclavianFindings}\n\n`;
+
+    const variantSentences = getAnatomicalVariationReportSentences(studyData);
+    if (variantSentences.length > 0) {
+      text += `ANATOMICAL VARIATION\n`;
+      text += `------------------------------------------------------------------\n`;
+      variantSentences.forEach(s => {
+        text += `  - ${s}\n`;
+      });
+      text += `\n`;
+    }
 
     if (studyData.nonCarotidFindings.length > 0) {
       text += `NON-CAROTID / ASSOCIATED FINDINGS:\n`;
@@ -314,6 +325,15 @@ export const ClinicalReport: React.FC<ClinicalReportProps> = ({
             <span className="font-bold text-slate-500 block uppercase text-[9px] mb-0.5 print:text-black">Protocol</span>
             <span className="font-bold text-cyan-400 uppercase text-[10px] print:text-black">{studyData.classificationSystem.replace('_', ' ')}</span>
           </div>
+          <div>
+            <span className="font-bold text-slate-500 block uppercase text-[9px] mb-0.5 print:text-black">Anatomical Variant</span>
+            <span className="font-bold text-slate-200 text-[11px] print:text-black">
+              {ARCH_VARIANTS_META[studyData.anatomyVariants?.archVariant || (studyData.variantLeftBct ? 'bovine_common_origin' : 'standard')]?.shortLabel || 'Standard'}
+              {studyData.anatomyVariants?.bifurcationVariant && studyData.anatomyVariants.bifurcationVariant !== 'normal'
+                ? ` (${BIFURCATION_VARIANTS_META[studyData.anatomyVariants.bifurcationVariant].shortLabel})`
+                : ''}
+            </span>
+          </div>
           {studyData.sonographer && (
             <div>
               <span className="font-bold text-slate-500 block uppercase text-[9px] mb-0.5 print:text-black">Sonographer</span>
@@ -357,6 +377,26 @@ export const ClinicalReport: React.FC<ClinicalReportProps> = ({
             {synthesizedNarrative.overall}
           </div>
         </div>
+
+        {/* Dedicated Anatomical Variation Findings Section */}
+        {getAnatomicalVariationReportSentences(studyData).length > 0 && (
+          <div className="p-6 border-b border-slate-800 bg-[#091122]/60 space-y-3 print:bg-white print:border-b print:border-gray-300">
+            <div className="flex items-center gap-2">
+              <GitBranch className="w-4 h-4 text-cyan-400 print:hidden" />
+              <h4 className="text-xs font-black uppercase tracking-wider text-slate-100 print:text-black">
+                Anatomical Variation & Vascular Configuration
+              </h4>
+            </div>
+            <div className="p-3.5 bg-[#080d19] border border-cyan-900/60 rounded-xl space-y-2 print:bg-gray-50 print:border-black print:text-black">
+              {getAnatomicalVariationReportSentences(studyData).map((sentence, idx) => (
+                <div key={idx} className="flex items-start gap-2.5 text-xs text-slate-200 print:text-black leading-relaxed">
+                  <span className="text-cyan-400 font-bold shrink-0 mt-0.5">•</span>
+                  <span>{sentence}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Side-by-Side Hemodynamic Panels */}
         <div className="p-6 grid grid-cols-1 lg:grid-cols-2 gap-6 border-b border-slate-800 print:grid-cols-2 print:border-b print:border-gray-300">

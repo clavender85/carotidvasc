@@ -1,12 +1,14 @@
 import { SegmentData, StudyData, ClassificationSystem, NascetCalculation, SideSummary } from '../types';
 import { SEGMENTS_META, getUpstreamPath } from '../constants';
+import { getAnatomicalVariationReportSentences } from './anatomyVariants';
 
 // Find the closest upstream segment with PSV that is considered "Normal" (no plaque/stenosis, flow is antegrade)
 export function findUpstreamNormalSegment(
   segmentId: string,
   studyData: StudyData
 ): { id: string; name: string; psv: number } | null {
-  const path = getUpstreamPath(segmentId, studyData.variantLeftBct);
+  const archVariant = studyData.anatomyVariants?.archVariant || (studyData.variantLeftBct ? 'bovine_common_origin' : 'standard');
+  const path = getUpstreamPath(segmentId, archVariant);
   
   for (const stopId of path) {
     const s = studyData.segments[stopId];
@@ -562,9 +564,16 @@ export function generateClinicalImpressionNarrative(studyData: StudyData): {
   overall += `1. ${rightText}\n`;
   overall += `2. ${leftText}\n`;
 
+  let sectionIdx = 3;
+  const variantSentences = getAnatomicalVariationReportSentences(studyData);
+  if (variantSentences.length > 0) {
+    overall += `${sectionIdx}. ANATOMICAL VARIATION: ${variantSentences.join(' ')}\n`;
+    sectionIdx++;
+  }
+
   if (studyData.nonCarotidFindings && studyData.nonCarotidFindings.length > 0) {
     const ncStr = studyData.nonCarotidFindings.map(f => `${f.side.toUpperCase()} ${f.type}${f.sizeMm ? ` (${f.sizeMm} mm)` : ''}: ${f.comments}`).join('; ');
-    overall += `3. Associated Pathologies / Non-Carotid: ${ncStr}.\n`;
+    overall += `${sectionIdx}. Associated Pathologies / Non-Carotid: ${ncStr}.\n`;
   }
 
   return {

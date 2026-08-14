@@ -36,8 +36,10 @@ export const VesselTreeList: React.FC<VesselTreeListProps> = ({
     'r_eca_prox', 'r_eca_mid', 'r_eca_dist',
   ];
 
+  const isBovine = studyData.variantLeftBct || studyData.anatomyVariants?.archVariant === 'bovine_common_origin';
+
   const leftSegmentIds = [
-    ...(studyData.variantLeftBct ? ['l_bct_prox', 'l_bct_dist'] : []),
+    ...(isBovine ? ['l_bct_prox', 'l_bct_dist'] : []),
     'l_subcl_prox', 'l_subcl_dist',
     'l_vert_prox', 'l_vert_mid', 'l_vert_dist',
     'l_cca_prox', 'l_cca_mid', 'l_cca_dist',
