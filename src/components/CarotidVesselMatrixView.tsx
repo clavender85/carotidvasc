@@ -7,6 +7,7 @@ interface CarotidVesselMatrixViewProps {
   studyData: StudyData;
   activeSegmentId: string | null;
   selectedSegmentIds: string[];
+  outstandingSegmentIds?: string[];
   onSelectSegment: (id: string, isMulti: boolean) => void;
   onAssessSegment: (id: string) => void;
   onUpdateSegment: (id: string, updates: Partial<SegmentData>) => void;
@@ -25,6 +26,7 @@ export const CarotidVesselMatrixView: React.FC<CarotidVesselMatrixViewProps> = (
   studyData,
   activeSegmentId,
   selectedSegmentIds,
+  outstandingSegmentIds = [],
   onSelectSegment,
   onAssessSegment,
   onUpdateSegment,
@@ -142,6 +144,11 @@ export const CarotidVesselMatrixView: React.FC<CarotidVesselMatrixViewProps> = (
 
           {/* Quick status badges */}
           <div className="flex flex-col gap-0.5">
+            {outstandingSegmentIds.includes(id) && s.psv === null && s.flowDirection === 'not_assessed' && (
+              <span className="px-1 py-0.2 rounded text-[7px] font-extrabold uppercase bg-amber-950 border border-amber-600 text-amber-300 text-center animate-pulse" title="Required by active protocol">
+                REQ
+              </span>
+            )}
             {isStenotic && (
               <span className="px-1 py-0.2 rounded text-[7.5px] font-extrabold uppercase bg-rose-950 border border-rose-800 text-rose-300 text-center">
                 STEN

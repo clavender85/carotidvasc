@@ -1,9 +1,12 @@
-import React, { useState } from 'react';
-import { StudyData, SegmentData, PlaqueData, MainTab } from '../types';
+import React, { useState, useMemo } from 'react';
+import { StudyData, SegmentData, PlaqueData, MainTab, ProtocolRequirement, ProtocolOverride } from '../types';
 import { suggestIcaStenosisCategory, generateSideSummary } from '../utils/calculations';
+import { evaluateDynamicProtocol } from '../utils/dynamicProtocolEngine';
 import { PatientExaminationHeader } from './PatientExaminationHeader';
 import { ClinicalContextSection } from './ClinicalContextSection';
 import { AbnormalCarotidFindingsPanel } from './AbnormalCarotidFindingsPanel';
+import { DynamicProtocolBanner } from './DynamicProtocolBanner';
+import { TechnicalExceptionModal } from './TechnicalExceptionModal';
 import { CarotidDiagram } from './CarotidDiagram';
 import { VesselTreeList } from './VesselTreeList';
 import { CarotidVesselMatrixView } from './CarotidVesselMatrixView';
@@ -84,6 +87,91 @@ export const ScanWorksheetTab: React.FC<ScanWorksheetTabProps> = ({
   const [isAssociatedExpanded, setIsAssociatedExpanded] = useState<boolean>(studyData.nonCarotidFindings.length > 0);
   const [isCriteriaExpanded, setIsCriteriaExpanded] = useState<boolean>(false);
 
+  // Technical Waiver Modal state
+  const [isTechModalOpen, setIsTechModalOpen] = useState<boolean>(false);
+  const [targetTechRequirement, setTargetTechRequirement] = useState<ProtocolRequirement | null>(null);
+
+  // Evaluate Dynamic Protocol Live
+  const dynamicEvaluation = useMemo(() => {
+    return evaluateDynamicProtocol({
+      study: studyData,
+      activeProtocol: studyData.siteProtocol,
+      previousStudy: studyData.priorExam,
+      anatomy: studyData.anatomyVariants,
+      criteria: studyData.classificationSystem
+    });
+  }, [
+    studyData.segments,
+    studyData.plaques,
+    studyData.nascet,
+    studyData.siteProtocol,
+    studyData.anatomyVariants,
+    studyData.classificationSystem,
+    studyData.technicalOverrides,
+    studyData.priorExam
+  ]);
+
+  const outstandingSegmentIds = useMemo(() => {
+    return dynamicEvaluation.outstandingRequired
+      .map(r => r.targetSegmentId)
+      .filter((id): id is string => Boolean(id));
+  }, [dynamicEvaluation]);
+
+  const handleOpenTechModal = (req?: ProtocolRequirement) => {
+    if (req) {
+      setTargetTechRequirement(req);
+    } else if (activeSegmentId) {
+      // Find matching requirement or fallback
+      const matchingReq = dynamicEvaluation.allEvaluatedRequirements.find(r => r.targetSegmentId === activeSegmentId) || {
+        id: `override_${activeSegmentId}`,
+        label: `Assessment for ${activeSegmentId}`,
+        tier: 'baseline',
+        isMandatory: true,
+        isCompleted: false,
+        reason: 'Manual technical exception documented by sonographer',
+        targetSegmentId: activeSegmentId
+      };
+      setTargetTechRequirement(matchingReq);
+    } else {
+      // Default to first outstanding required requirement
+      setTargetTechRequirement(dynamicEvaluation.outstandingRequired[0] || null);
+    }
+    setIsTechModalOpen(true);
+  };
+
+  const handleSaveOverride = (override: ProtocolOverride) => {
+    const updatedOverrides = {
+      ...(studyData.technicalOverrides || {}),
+      [override.requirementId]: override
+    };
+
+    const newAuditLog = [
+      ...(studyData.protocolAuditLog || []),
+      {
+        id: `audit_${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        eventType: 'exception_granted' as const,
+        description: `Technical waiver recorded for ${override.segmentId || override.requirementId}: ${override.reason} (${override.comment || 'No comment'})`,
+        author: override.sonographer
+      }
+    ];
+
+    // Also update segment technical limitations field if segment exists
+    let updatedSegments = { ...studyData.segments };
+    if (override.segmentId && updatedSegments[override.segmentId]) {
+      updatedSegments[override.segmentId] = {
+        ...updatedSegments[override.segmentId],
+        technicalLimitations: `${override.reason}: ${override.comment}`
+      };
+    }
+
+    onUpdateStudy({
+      technicalOverrides: updatedOverrides,
+      protocolAuditLog: newAuditLog,
+      segments: updatedSegments
+    });
+  };
+
   // Live summaries for bottom overview
   const rightSummary = generateSideSummary('right', studyData);
   const leftSummary = generateSideSummary('left', studyData);
@@ -130,6 +218,18 @@ export const ScanWorksheetTab: React.FC<ScanWorksheetTabProps> = ({
       <ClinicalContextSection
         studyData={studyData}
         onUpdateStudy={onUpdateStudy}
+      />
+
+      {/* 3b. Active Clinical Dynamic Protocol Governance & Trigger Banner */}
+      <DynamicProtocolBanner
+        studyData={studyData}
+        evaluation={dynamicEvaluation}
+        onSelectSegment={(id) => {
+          onSelectSegment(id, false);
+          onSetActiveSegment(id);
+        }}
+        onOpenTechnicalModal={handleOpenTechModal}
+        onNavigateTab={onNavigateTab}
       />
 
       {/* 4. Quick Scanning Controls Bar & View Switcher */}
@@ -213,6 +313,7 @@ export const ScanWorksheetTab: React.FC<ScanWorksheetTabProps> = ({
                 studyData={studyData}
                 selectedSegmentIds={selectedSegmentIds}
                 activeSegmentId={activeSegmentId}
+                outstandingSegmentIds={outstandingSegmentIds}
                 onSelectSegment={onSelectSegment}
                 onAssessSegment={onAssessSegment}
                 onToggleVariant={() => onUpdateStudy({ variantLeftBct: !studyData.variantLeftBct })}
@@ -224,6 +325,7 @@ export const ScanWorksheetTab: React.FC<ScanWorksheetTabProps> = ({
                 studyData={studyData}
                 selectedSegmentIds={selectedSegmentIds}
                 activeSegmentId={activeSegmentId}
+                outstandingSegmentIds={outstandingSegmentIds}
                 onSelectSegment={onSelectSegment}
                 onAssessSegment={onAssessSegment}
                 onQuickMarkNormal={onQuickMarkNormal}
@@ -236,6 +338,7 @@ export const ScanWorksheetTab: React.FC<ScanWorksheetTabProps> = ({
               studyData={studyData}
               activeSegmentId={activeSegmentId}
               selectedSegmentIds={selectedSegmentIds}
+              outstandingSegmentIds={outstandingSegmentIds}
               onSelectSegment={onSelectSegment}
               onAssessSegment={onAssessSegment}
               onUpdateSegment={onUpdateSegment}
@@ -452,6 +555,15 @@ export const ScanWorksheetTab: React.FC<ScanWorksheetTabProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Technical Exception / Protocol Waiver Modal */}
+      <TechnicalExceptionModal
+        isOpen={isTechModalOpen}
+        onClose={() => setIsTechModalOpen(false)}
+        requirement={targetTechRequirement}
+        studyData={studyData}
+        onSaveOverride={handleSaveOverride}
+      />
 
     </div>
   );

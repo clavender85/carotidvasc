@@ -137,3 +137,78 @@ export function getAnatomicalVariationReportSentences(study: StudyData): string[
 
   return sentences;
 }
+
+/**
+ * Returns the parent origin of the vertebral artery based on configured anatomical variant.
+ */
+export function getVertebralParent(
+  side: 'right' | 'left',
+  anatomy?: AnatomyVariantState
+): 'subclavian' | 'aortic_arch' | 'other' {
+  const archVariant = anatomy?.archVariant || 'standard';
+  if (side === 'left') {
+    if (archVariant === 'left_vertebral_from_arch') {
+      return 'aortic_arch';
+    }
+    return 'subclavian';
+  } else {
+    return 'subclavian';
+  }
+}
+
+/**
+ * Returns the immediate parent vessel segment ID for any vessel in the carotid tree,
+ * properly respecting anatomical variants (e.g. left vertebral from arch, bovine origin, aberrant subclavian).
+ */
+export function getVesselParent(
+  vesselId: string,
+  anatomy?: AnatomyVariantState
+): string {
+  const archVariant = anatomy?.archVariant || 'standard';
+
+  if (vesselId.startsWith('l_vert_')) {
+    if (archVariant === 'left_vertebral_from_arch') {
+      return 'arch';
+    }
+    return 'l_subcl_prox';
+  }
+
+  if (vesselId.startsWith('r_vert_')) {
+    return 'r_subcl_prox';
+  }
+
+  if (vesselId === 'l_cca_prox') {
+    if (archVariant === 'bovine_common_origin') {
+      return 'l_bct_dist';
+    }
+    return 'arch';
+  }
+
+  if (vesselId === 'r_cca_prox') {
+    if (archVariant === 'aberrant_right_subclavian' || archVariant === 'separate_rcca_and_rsa') {
+      return 'arch';
+    }
+    return 'r_bct_dist';
+  }
+
+  if (vesselId === 'l_subcl_prox') {
+    return 'arch';
+  }
+
+  if (vesselId === 'r_subcl_prox') {
+    if (archVariant === 'aberrant_right_subclavian' || archVariant === 'separate_rcca_and_rsa') {
+      return 'arch';
+    }
+    return 'r_bct_dist';
+  }
+
+  // Common carotid to bulb
+  if (vesselId === 'r_bulb') return 'r_cca_dist';
+  if (vesselId === 'l_bulb') return 'l_cca_dist';
+
+  // Bulb to ICA/ECA
+  if (vesselId === 'r_ica_prox' || vesselId === 'r_eca_prox') return 'r_bulb';
+  if (vesselId === 'l_ica_prox' || vesselId === 'l_eca_prox') return 'l_bulb';
+
+  return 'arch';
+}

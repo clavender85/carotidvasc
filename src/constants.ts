@@ -1,4 +1,5 @@
 import { SegmentData, CustomThresholds, StudyData, ArchVariant } from './types';
+import { AUSTRALIA_DEFAULT_CONFIG } from './data/protocols/australia';
 
 export interface SegmentMeta {
   id: string;
@@ -453,6 +454,7 @@ export function getInitialStudyData(): StudyData {
       variantNotes: '',
     },
     classificationSystem: 'ASUM_2021',
+    siteProtocol: { ...AUSTRALIA_DEFAULT_CONFIG },
     imtThresholdMm: 1.1,
     customThresholds: { ...DEFAULT_CUSTOM_THRESHOLDS },
     patientName: '',
@@ -505,6 +507,29 @@ export function getInitialStudyData(): StudyData {
       left: '',
       general: '',
     },
+    technicalOverrides: {},
+    protocolAuditLog: [
+      {
+        id: 'init_1',
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        type: 'PROTOCOL_CHANGED',
+        description: 'Initialised Australian Standard / ASUM 2021 Clinical Protocol',
+        details: 'Universal baseline with conditional subclavian workflow.'
+      }
+    ],
+    protocolSnapshot: {
+      protocolId: 'australia_asum',
+      protocolVersion: '2021.1',
+      criteriaId: 'ASUM_2021',
+      criteriaVersion: '2021.0',
+      siteProtocolId: 'asum_default',
+      siteProtocolVersion: '1.0',
+      timestamp: new Date().toISOString()
+    },
+    activeCcaReferenceOverride: {
+      right: null,
+      left: null
+    }
   };
 }
 

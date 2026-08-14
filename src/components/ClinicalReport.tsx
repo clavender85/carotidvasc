@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { StudyData, MainTab } from '../types';
+import { StudyData, MainTab, ProtocolOverride } from '../types';
 import { generateSideSummary, checkCcaSuitability, generateClinicalImpressionNarrative } from '../utils/calculations';
 import { validateCarotidStudy, ValidationIssue } from '../utils/validationEngine';
 import { SEGMENTS_META } from '../constants';
@@ -60,7 +60,7 @@ export const ClinicalReport: React.FC<ClinicalReportProps> = ({
         "Total Occlusion (100%)",
         "Indeterminate / Incomplete"
       ];
-    } else if (studyData.classificationSystem === 'MODIFIED_SRU_2021') {
+    } else if (studyData.classificationSystem === 'IAC_MODIFIED_SRU_2023' || studyData.classificationSystem === 'MODIFIED_SRU_2021') {
       return [
         "Normal (0% Stenosis)",
         "Mild Stenosis (<50%)",
@@ -74,6 +74,15 @@ export const ClinicalReport: React.FC<ClinicalReportProps> = ({
       return [
         "Normal (0% Stenosis)",
         "Mild Stenosis (<50%)",
+        "Moderate Stenosis (50-69%)",
+        "Severe Stenosis (>=70%)",
+        "Near Occlusion (95-99%)",
+        "Total Occlusion (100%)",
+        "Indeterminate / Incomplete"
+      ];
+    } else if (studyData.classificationSystem === 'UK_JOINT') {
+      return [
+        "Normal (<50% Stenosis)",
         "Moderate Stenosis (50-69%)",
         "Severe Stenosis (>=70%)",
         "Near Occlusion (95-99%)",
@@ -467,6 +476,48 @@ export const ClinicalReport: React.FC<ClinicalReportProps> = ({
                 {studyData.priorExam.comparisonNotes}
               </div>
             )}
+          </div>
+        )}
+
+        {/* Technical Exception / Protocol Waiver Documentation */}
+        {studyData.technicalOverrides && Object.keys(studyData.technicalOverrides).length > 0 && (
+          <div className="p-6 border-b border-slate-800 bg-[#081020]/70 space-y-3 print:bg-white print:border-b print:border-gray-300">
+            <div className="flex items-center gap-2">
+              <ShieldAlert className="w-4 h-4 text-amber-400 print:hidden" />
+              <h4 className="text-xs font-black uppercase tracking-wider text-slate-100 print:text-black">
+                Documented Technical Limitations & Protocol Exceptions ({Object.keys(studyData.technicalOverrides).length})
+              </h4>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {(Object.values(studyData.technicalOverrides) as ProtocolOverride[]).map((override: ProtocolOverride, idx: number) => (
+                <div
+                  key={idx}
+                  className="p-3 bg-[#0b1329] border border-amber-900/60 rounded-xl space-y-1 text-xs print:bg-gray-50 print:border print:border-black"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-amber-300 uppercase tracking-wide print:text-black">
+                      {override.segmentId ? (SEGMENTS_META[override.segmentId]?.name || override.segmentId) : override.requirementId}
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-mono print:text-black">
+                      {override.timestamp}
+                    </span>
+                  </div>
+                  <div className="text-slate-200 print:text-black font-semibold">
+                    Limitation: <span className="text-amber-200 capitalize">{override.reason.replace(/_/g, ' ')}</span>
+                  </div>
+                  {override.comment && (
+                    <p className="text-[11px] text-slate-400 italic print:text-black">
+                      "{override.comment}"
+                    </p>
+                  )}
+                  {override.sonographer && (
+                    <div className="text-[10px] text-slate-500 font-mono print:text-black">
+                      Recorded by: {override.sonographer}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         )}
 

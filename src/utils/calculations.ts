@@ -260,9 +260,9 @@ export function suggestIcaStenosisCategory(
     return { category: "Mild Stenosis (<50%)", criteriaUsed: `${desc}: Normal velocities with mild wall plaque.` };
   }
 
-  // --- MODIFIED SRU / IAC 2021 LOGIC ---
-  if (system === 'MODIFIED_SRU_2021') {
-    const desc = "Modified SRU / IAC 2021 Criteria";
+  // --- MODIFIED SRU / IAC 2023 LOGIC ---
+  if (system === 'IAC_MODIFIED_SRU_2023' || system === 'MODIFIED_SRU_2021') {
+    const desc = "IAC Modified SRU 2023 Criteria";
     
     // Normal: PSV < 180 cm/s, no plaque, Ratio < 2, EDV < 40
     const normalVel = psv < 180 && (!ratio || ratio < 2) && (edv === null || edv < 40);
@@ -286,12 +286,27 @@ export function suggestIcaStenosisCategory(
       return { category: "Moderate Stenosis (50-69%)", criteriaUsed: `${desc}: Moderate acceleration (PSV 180-230 cm/s, EDV 40-100 cm/s, Ratio 2.0-4.0).` };
     }
 
-    // Exception check: PSV < 180 but Ratio > 2, significant plaque, other features
-    if (psv < 180 && (ratio !== null && ratio > 2.0) && hasPlaque) {
-      return { category: "Moderate Stenosis (50-69%)", criteriaUsed: `${desc} [Exception]: PSV < 180 cm/s, but ICA/CCA ratio > 2.0 in the presence of significant plaque.` };
+    // Exception check: PSV 125-180 but Ratio >= 2.0, significant plaque
+    if (psv >= 125 && psv < 180 && (ratio !== null && ratio >= 2.0) && hasPlaque) {
+      return { category: "Moderate Stenosis (50-69%)", criteriaUsed: `${desc} [IAC Exception]: PSV 125–180 cm/s with ICA/CCA ratio >= 2.0 and significant plaque.` };
     }
 
     return { category: "Mild Stenosis (<50%)", criteriaUsed: `${desc}: Mild velocity findings.` };
+  }
+
+  // --- UK JOINT RECOMMENDATIONS ---
+  if (system === 'UK_JOINT') {
+    const desc = "UK Joint Recommendations";
+    if (psv < 125 && (!ratio || ratio < 2.0)) {
+      return { category: "Normal (<50% Stenosis)", criteriaUsed: `${desc}: PSV < 125 cm/s, ICA/CCA Ratio < 2.0.` };
+    }
+    if (psv > 230 || (ratio !== null && ratio > 4.0) || (edv !== null && edv > 100)) {
+      return { category: "Severe Stenosis (>=70%)", criteriaUsed: `${desc}: PSV > 230 cm/s, EDV > 100 cm/s, Ratio > 4.0.` };
+    }
+    if ((psv >= 125 && psv <= 230) || (ratio !== null && ratio >= 2.0 && ratio <= 4.0)) {
+      return { category: "Moderate Stenosis (50-69%)", criteriaUsed: `${desc}: PSV 125-230 cm/s, Ratio 2.0-4.0.` };
+    }
+    return { category: "Normal (<50% Stenosis)", criteriaUsed: `${desc}: Normal or sub-hemodynamic velocities.` };
   }
 
   // --- STANDARD SRU 2003 LOGIC ---

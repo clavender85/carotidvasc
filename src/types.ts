@@ -1,5 +1,23 @@
 export type FlowDirection = 'antegrade' | 'retrograde' | 'bidirectional' | 'absent' | 'not_assessed';
 
+export type VertebralFlowDirection =
+  | 'antegrade'
+  | 'bidirectional'
+  | 'retrograde'
+  | 'absent'
+  | 'not_assessed';
+
+export type VertebralWaveformCharacter =
+  | 'normal_antegrade'
+  | 'early_systolic_deceleration'
+  | 'bunny_pre_steal'
+  | 'bidirectional_partial_steal'
+  | 'complete_reversal'
+  | 'dampened'
+  | 'high_resistance'
+  | 'other'
+  | 'not_assessed';
+
 export type PlaqueComposition = string; // Support multiple selections joined as string
 export type PlaqueSurface = 'smooth' | 'irregular' | 'ulcerated' | 'indeterminate';
 export type CalcificShadowing = 'none' | 'minor' | 'partial' | 'dense';
@@ -13,6 +31,7 @@ export interface SegmentData {
   edv: number | null;
   flowDirection: FlowDirection;
   waveform: string;
+  vertebralWaveformCharacter?: VertebralWaveformCharacter;
   plaquePresent: boolean;
   intimalThickening: boolean;
   stenosisPresent: boolean;
@@ -40,7 +59,14 @@ export interface PlaqueData {
   freeTextDescription: string;
 }
 
-export type ClassificationSystem = 'ASUM_2021' | 'SRU_2003' | 'MODIFIED_SRU_2021' | 'NASCET_INDEX' | 'CUSTOM';
+export type ClassificationSystem =
+  | 'ASUM_2021'
+  | 'IAC_MODIFIED_SRU_2023'
+  | 'MODIFIED_SRU_2021' // Legacy alias
+  | 'SRU_2003'
+  | 'UK_JOINT'
+  | 'NASCET_INDEX'
+  | 'CUSTOM';
 
 export type ArchVariant =
   | 'standard'
@@ -112,7 +138,43 @@ export interface NonCarotidFinding {
   comments: string;
 }
 
-export type MainTab = 'scan' | 'previous' | 'report';
+// 4 Top-Level Main Tabs
+export type MainTab = 'scan' | 'previous' | 'report' | 'protocol';
+
+export type RequirementLevel = 'required' | 'recommended' | 'conditional' | 'optional' | 'not_performed';
+
+export type SpecialExamType =
+  | 'routine_native'
+  | 'post_cea'
+  | 'post_stent'
+  | 'subclavian_steal'
+  | 'known_occlusion'
+  | 'limited_targeted';
+
+export interface SiteProtocolConfig {
+  protocolPresetId: 'universal_core' | 'australia_asum' | 'united_states_iac' | 'custom_site';
+  organisation: string;
+  site: string;
+  localProtocolName: string;
+  protocolOwner: string;
+  approvedBy: string;
+  version: string;
+  effectiveDate: string;
+  reviewDate: string;
+  siteNotes: string;
+  subclavianRoutine: 'routine' | 'conditional';
+  vertebralExtent: 'representative' | 'full';
+  ccaExtent: 'prox_dist' | 'prox_mid_dist';
+  ecaExtent: 'prox_only' | 'prox_mid_dist';
+  imtExtent: 'routine' | 'conditional' | 'not_performed';
+  nascetBModeExtent: 'routine_above_threshold' | 'conditional' | 'not_routine';
+  secondSonographerReviewTrigger: string;
+  crossSectionalEscalation: string;
+  mobileExamInstructions: string;
+  afterHoursDataset: string;
+  specialExamType: SpecialExamType;
+  segmentRequirements: Record<string, RequirementLevel>;
+}
 
 export interface PriorExamData {
   hasPriorExam: boolean;
@@ -120,6 +182,7 @@ export interface PriorExamData {
   facility: string;
   sonographer?: string;
   interpretingPhysician?: string;
+  criteriaUsed?: string; // e.g. ASUM 2021, IAC Modified SRU 2023, SRU 2003, Other
   hasPriorReport: boolean;
   rightIcaPsv: number | null;
   rightIcaEdv: number | null;
@@ -151,6 +214,123 @@ export interface PriorExamData {
   comparisonNotes: string;
 }
 
+export type ProtocolRequirementLevel =
+  | 'required'
+  | 'recommended'
+  | 'optional'
+  | 'informational';
+
+export type RuleSeverity =
+  | 'blocking'
+  | 'warning'
+  | 'recommendation'
+  | 'information';
+
+export type ProtocolRequirementCategory =
+  | 'baseline'
+  | 'carotid'
+  | 'vertebral'
+  | 'subclavian'
+  | 'plaque'
+  | 'stenosis'
+  | 'occlusion'
+  | 'technical'
+  | 'comparison'
+  | 'post_intervention';
+
+export interface ProtocolRequirement {
+  id: string;
+  label: string;
+  category: ProtocolRequirementCategory;
+  side?: 'right' | 'left' | 'bilateral' | 'common';
+  targetSegmentId?: string;
+  targetModule?: 'segment' | 'plaque' | 'nascet' | 'prior' | 'technical' | 'subclavian' | 'ratio' | 'indication';
+  level: ProtocolRequirementLevel;
+  blocking: boolean;
+  reason: string;
+  triggeredBy?: string;
+  sourceRuleId?: string;
+  allowTechnicalOverride?: boolean;
+  satisfied: boolean;
+  satisfactionNote?: string;
+}
+
+export interface ProtocolOverride {
+  requirementId: string;
+  segmentId?: string;
+  reason: string;
+  comment?: string;
+  timestamp: string;
+  sonographer?: string;
+}
+
+export interface ProtocolSnapshot {
+  protocolId: string;
+  protocolVersion: string;
+  criteriaId: string;
+  criteriaVersion: string;
+  siteProtocolId: string;
+  siteProtocolVersion: string;
+  timestamp: string;
+}
+
+export interface ProtocolAuditEvent {
+  id: string;
+  timestamp: string;
+  type:
+    | 'TRIGGER_ADDED'
+    | 'REQUIREMENT_COMPLETED'
+    | 'EXCEPTION_RECORDED'
+    | 'CRITERIA_CHANGED'
+    | 'PROTOCOL_CHANGED'
+    | 'FINDING_UPDATED';
+  description: string;
+  details?: string;
+}
+
+export interface DynamicProtocolRule {
+  id: string;
+  name: string;
+  description: string;
+  priority: number;
+  category: ProtocolRequirementCategory;
+  severity: RuleSeverity;
+  appliesToProtocols?: string[];
+  enabled: boolean;
+  source: 'universal' | 'regional' | 'site' | 'anatomy';
+  ifCondition: string;
+  thenAction: string;
+}
+
+export interface DynamicProtocolEvaluation {
+  baselineRequirements: ProtocolRequirement[];
+  triggeredRequirements: ProtocolRequirement[];
+  outstandingRequired: ProtocolRequirement[];
+  outstandingRecommended: ProtocolRequirement[];
+  completedRequirements: ProtocolRequirement[];
+  technicalOverrides: ProtocolOverride[];
+  warnings: {
+    id: string;
+    title: string;
+    message: string;
+    severity: RuleSeverity;
+    side?: 'right' | 'left' | 'bilateral';
+    actionLabel?: string;
+    targetSegmentId?: string;
+  }[];
+  protocolCompletionPercent: number;
+  canCompleteStudy: boolean;
+  summaryStats: {
+    baselineTotal: number;
+    baselineCompleted: number;
+    dynamicTotal: number;
+    dynamicCompleted: number;
+    technicalExceptionsCount: number;
+    recommendationsCount: number;
+    blockingRemainingCount: number;
+  };
+}
+
 export interface StudyData {
   segments: Record<string, SegmentData>;
   plaques: PlaqueData[];
@@ -175,6 +355,7 @@ export interface StudyData {
   variantLeftBct: boolean;
   anatomyVariants: AnatomyVariantState;
   classificationSystem: ClassificationSystem;
+  siteProtocol: SiteProtocolConfig;
   imtThresholdMm: number;
   customThresholds: CustomThresholds;
   patientName: string;
@@ -193,5 +374,13 @@ export interface StudyData {
     right: string;
     left: string;
     general: string;
+  };
+  // Dynamic Protocol State
+  technicalOverrides: Record<string, ProtocolOverride>;
+  protocolAuditLog: ProtocolAuditEvent[];
+  protocolSnapshot?: ProtocolSnapshot;
+  activeCcaReferenceOverride?: {
+    right?: string | null;
+    left?: string | null;
   };
 }

@@ -24,6 +24,7 @@ interface CarotidDiagramProps {
   studyData: StudyData;
   selectedSegmentIds: string[];
   activeSegmentId: string | null;
+  outstandingSegmentIds?: string[];
   onSelectSegment: (id: string, isMulti: boolean) => void;
   onAssessSegment: (id: string) => void;
   onToggleVariant?: () => void;
@@ -34,6 +35,7 @@ export const CarotidDiagram: React.FC<CarotidDiagramProps> = ({
   studyData,
   selectedSegmentIds,
   activeSegmentId,
+  outstandingSegmentIds = [],
   onSelectSegment,
   onAssessSegment,
   onToggleVariant,
@@ -257,6 +259,20 @@ export const CarotidDiagram: React.FC<CarotidDiagramProps> = ({
         onMouseMove={(e) => handleMouseMove(e, id)}
         onMouseLeave={handleMouseLeave}
       >
+        {/* Amber Protocol Required Pulse/Glow (When required by active protocol and not yet assessed) */}
+        {outstandingSegmentIds.includes(id) && !isActive && !isSelected && (
+          <path
+            d={d}
+            fill="none"
+            stroke="#f59e0b"
+            strokeWidth={finalStrokeWidth + 6}
+            strokeLinecap="round"
+            opacity={0.7}
+            strokeDasharray="6 4"
+            className="animate-pulse"
+          />
+        )}
+
         {/* Glow backing for active, selected, or hovered */}
         {(isActive || isSelected || isHovered) && (
           <path

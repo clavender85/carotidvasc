@@ -179,6 +179,19 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
     }
   };
 
+  const targetSegmentId = currentId;
+  const isVertebral = targetSegmentId && SEGMENTS_META[targetSegmentId]?.type === 'vertebral';
+
+  const vertebralPresets: { label: string; character: string; flow: FlowDirection; waveText: string }[] = [
+    { label: 'Normal Antegrade', character: 'normal_antegrade', flow: 'antegrade', waveText: 'Normal antegrade' },
+    { label: 'Early Systolic Decel', character: 'early_systolic_deceleration', flow: 'antegrade', waveText: 'Early systolic deceleration' },
+    { label: 'Bunny / Pre-Steal', character: 'bunny_pre_steal', flow: 'antegrade', waveText: 'Bunny / Pre-steal morphology' },
+    { label: 'Bidirectional / Partial Steal', character: 'bidirectional_partial_steal', flow: 'bidirectional', waveText: 'Bidirectional / Partial Steal' },
+    { label: 'Complete Reversal', character: 'complete_reversal', flow: 'retrograde', waveText: 'Complete flow reversal' },
+    { label: 'Dampened', character: 'dampened', flow: 'antegrade', waveText: 'Dampened low resistance' },
+    { label: 'High Resistance', character: 'high_resistance', flow: 'antegrade', waveText: 'High resistance / distal resistance' }
+  ];
+
   const wavePresets = [
     'Normal Low Resistance',
     'Normal High Resistance',
@@ -193,7 +206,6 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
   ];
 
   // For Local Ratio computation
-  const targetSegmentId = currentId;
   const localRatioData = targetSegmentId ? calculateLocalPsvRatio(targetSegmentId, studyData) : null;
   const autoUpstreamRef = targetSegmentId ? findUpstreamNormalSegment(targetSegmentId, studyData) : null;
 
@@ -402,26 +414,57 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
 
         {/* 3. Waveform Presets */}
         <div className={isBulk && !applyWave ? 'opacity-40 pointer-events-none' : ''}>
-          <label className="block text-[11px] font-bold uppercase text-slate-300 mb-1">
-            Waveform Characteristics
-          </label>
-          <div className="flex flex-wrap gap-1.5 mb-2">
-            {wavePresets.map(w => (
-              <button
-                key={w}
-                type="button"
-                id={`waveform-preset-${w.replace(/\s+/g, '-').toLowerCase()}`}
-                onClick={() => setWaveform(w)}
-                className={`px-2 py-1 rounded text-[9.5px] font-bold transition-all border cursor-pointer ${
-                  waveform === w
-                    ? 'bg-cyan-950/70 border-cyan-500 text-cyan-200'
-                    : 'bg-[#0f172a] border-slate-800 text-slate-400 hover:bg-slate-800'
-                }`}
-              >
-                {w}
-              </button>
-            ))}
+          <div className="flex items-center justify-between mb-1">
+            <label className="block text-[11px] font-bold uppercase text-slate-300">
+              Waveform Characteristics {isVertebral && <span className="text-cyan-400 font-mono font-bold">(Vertebral Steal Protocol)</span>}
+            </label>
+            {isVertebral && (
+              <span className="text-[9.5px] text-amber-300/90 font-mono">
+                Bunny/Reversal auto-syncs flow & triggers Subclavian
+              </span>
+            )}
           </div>
+
+          {isVertebral ? (
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {vertebralPresets.map(preset => (
+                <button
+                  key={preset.character}
+                  type="button"
+                  id={`vert-preset-${preset.character}`}
+                  onClick={() => {
+                    setWaveform(preset.waveText);
+                    setFlowDirection(preset.flow);
+                  }}
+                  className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all border cursor-pointer ${
+                    waveform === preset.waveText
+                      ? 'bg-cyan-600 text-slate-950 border-cyan-400 font-black shadow-sm'
+                      : 'bg-[#0f172a] border-slate-800 text-slate-300 hover:bg-slate-800 hover:border-slate-700'
+                  }`}
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {wavePresets.map(w => (
+                <button
+                  key={w}
+                  type="button"
+                  id={`waveform-preset-${w.replace(/\s+/g, '-').toLowerCase()}`}
+                  onClick={() => setWaveform(w)}
+                  className={`px-2 py-1 rounded text-[9.5px] font-bold transition-all border cursor-pointer ${
+                    waveform === w
+                      ? 'bg-cyan-950/70 border-cyan-500 text-cyan-200'
+                      : 'bg-[#0f172a] border-slate-800 text-slate-400 hover:bg-slate-800'
+                  }`}
+                >
+                  {w}
+                </button>
+              ))}
+            </div>
+          )}
           <input
             id="input-waveform-custom"
             type="text"

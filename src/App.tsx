@@ -5,14 +5,15 @@ import { suggestIcaStenosisCategory } from './utils/calculations';
 import { ScanWorksheetTab } from './components/ScanWorksheetTab';
 import { PriorComparisonTab } from './components/PriorComparisonTab';
 import { ClinicalReport } from './components/ClinicalReport';
-import { Activity, FileText, History, Layers, Sparkles, RefreshCw, CheckCircle2 } from 'lucide-react';
+import { ProtocolPage } from './components/protocol/ProtocolPage';
+import { Activity, FileText, History, Layers, Sparkles, RefreshCw, CheckCircle2, BookOpen } from 'lucide-react';
 
 export default function App() {
   const [studyData, setStudyData] = useState<StudyData>(getInitialStudyData());
   const [selectedSegmentIds, setSelectedSegmentIds] = useState<string[]>([]);
   const [activeSegmentId, setActiveSegmentId] = useState<string | null>(null);
   
-  // Clean 3-Tab Architecture: 'scan' | 'previous' | 'report'
+  // Clean 4-Tab Architecture: 'scan' | 'previous' | 'report' | 'protocol'
   const [activeTab, setActiveTab] = useState<MainTab>('scan');
   
   // Sub-view toggle inside SCAN: diagram vs matrix
@@ -362,6 +363,20 @@ export default function App() {
           <FileText className="w-4 h-4" />
           <span>3. STRUCTURED REPORT</span>
         </button>
+
+        <button
+          type="button"
+          id="nav-tab-protocol"
+          onClick={() => setActiveTab('protocol')}
+          className={`flex items-center gap-2.5 px-5 py-3 text-xs font-black uppercase tracking-wider border-b-2 transition-all whitespace-nowrap cursor-pointer ${
+            activeTab === 'protocol'
+              ? 'border-cyan-400 text-cyan-400 bg-cyan-950/20 shadow-sm'
+              : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/30'
+          }`}
+        >
+          <BookOpen className="w-4 h-4" />
+          <span>4. PROTOCOL</span>
+        </button>
       </nav>
 
       {/* 3. Main Workspace Body */}
@@ -412,11 +427,19 @@ export default function App() {
           />
         )}
 
+        {/* Tab 4: PROTOCOL (Standard Protocol Library & Site Addendum Builder) */}
+        {activeTab === 'protocol' && (
+          <ProtocolPage
+            studyData={studyData}
+            onUpdateStudyData={setStudyData}
+          />
+        )}
+
       </div>
 
       {/* 4. Footer */}
       <footer className="bg-[#0f172a] border-t border-slate-800 py-3.5 px-6 text-center text-[10px] text-slate-500 mt-auto">
-        Vascular Ultrasound Clinical Workstation • 3-Tab Streamlined Worksheet • ASUM 2021 & SRU Consensus Standards
+        Vascular Ultrasound Clinical Workstation • 4-Tab Standardised Suite • ASUM 2021, IAC 2023 & NASCET Protocol Framework
       </footer>
 
     </div>

@@ -8,6 +8,7 @@ interface VesselTreeListProps {
   studyData: StudyData;
   selectedSegmentIds: string[];
   activeSegmentId: string | null;
+  outstandingSegmentIds?: string[];
   onSelectSegment: (id: string, isMulti: boolean) => void;
   onAssessSegment: (id: string) => void;
   onQuickMarkNormal: (ids: string[]) => void;
@@ -18,6 +19,7 @@ export const VesselTreeList: React.FC<VesselTreeListProps> = ({
   studyData,
   selectedSegmentIds,
   activeSegmentId,
+  outstandingSegmentIds = [],
   onSelectSegment,
   onAssessSegment,
   onQuickMarkNormal,
@@ -134,6 +136,11 @@ export const VesselTreeList: React.FC<VesselTreeListProps> = ({
           </div>
 
           {/* Status Badges */}
+          {outstandingSegmentIds.includes(id) && !hasPsv && s.flowDirection === 'not_assessed' && (
+            <span className="px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase bg-amber-950 text-amber-300 border border-amber-600 animate-pulse" title="Required by active clinical protocol">
+              REQ
+            </span>
+          )}
           {isStenotic && (
             <span className="px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase bg-rose-950 text-rose-300 border border-rose-800">
               STEN
