@@ -1,8 +1,9 @@
-import React from 'react';
-import { StudyData, SideSummary } from '../types';
+import React, { useState } from 'react';
+import { StudyData } from '../types';
 import { generateSideSummary, checkCcaSuitability, generateClinicalImpressionNarrative } from '../utils/calculations';
+import { validateCarotidStudy, ValidationIssue } from '../utils/validationEngine';
 import { SEGMENTS_META } from '../constants';
-import { FileText, Copy, Printer, Check, Clipboard, RefreshCw, AlertTriangle, ChevronRight, Sparkles } from 'lucide-react';
+import { FileText, Copy, Printer, Check, Clipboard, RefreshCw, AlertTriangle, ChevronRight, Sparkles, ShieldCheck, ShieldAlert, CheckCircle2, UserCheck, AlertCircle } from 'lucide-react';
 
 interface ClinicalReportProps {
   studyData: StudyData;
@@ -20,9 +21,22 @@ export const ClinicalReport: React.FC<ClinicalReportProps> = ({
   const rightSummary = generateSideSummary('right', studyData);
   const leftSummary = generateSideSummary('left', studyData);
   const synthesizedNarrative = generateClinicalImpressionNarrative(studyData);
+  const validationIssues = validateCarotidStudy(studyData);
 
-  const [copied, setCopied] = React.useState(false);
-  const [copiedImpression, setCopiedImpression] = React.useState(false);
+  const [copied, setCopied] = useState(false);
+  const [copiedImpression, setCopiedImpression] = useState(false);
+  const [signedOff, setSignedOff] = useState(false);
+  const [signOffTimestamp, setSignOffTimestamp] = useState<string | null>(null);
+
+  const handleToggleSignOff = () => {
+    if (!signedOff) {
+      setSignedOff(true);
+      setSignOffTimestamp(new Date().toLocaleString());
+    } else {
+      setSignedOff(false);
+      setSignOffTimestamp(null);
+    }
+  };
 
   const handleCopyImpression = () => {
     navigator.clipboard.writeText(synthesizedNarrative.overall).then(() => {
@@ -31,7 +45,6 @@ export const ClinicalReport: React.FC<ClinicalReportProps> = ({
     });
   };
 
-  // Quick categories for manual override dropdown list
   const getClassificationOptions = () => {
     if (studyData.classificationSystem === 'ASUM_2021') {
       return [
@@ -82,13 +95,13 @@ export const ClinicalReport: React.FC<ClinicalReportProps> = ({
 
   const options = getClassificationOptions();
 
-  // Generate plain text version for copy to clipboard
+  // Generate structured plain text report for EMR
   const generatePlainTextReport = (): string => {
     const r = rightSummary;
     const l = leftSummary;
     
     let text = `==================================================================\n`;
-    text += `CAROTID ULTRASOUND WORKSHEET & CLINICAL REPORT\n`;
+    text += `CAROTID ARTERIAL DUPLEX ULTRASOUND REPORT\n`;
     text += `==================================================================\n\n`;
     
     text += `PATIENT & EXAM DETAILS\n`;
@@ -96,13 +109,21 @@ export const ClinicalReport: React.FC<ClinicalReportProps> = ({
     text += `Patient Name: ${studyData.patientName || 'Not entered'}\n`;
     text += `Patient ID/MRN: ${studyData.patientId || 'Not entered'}\n`;
     text += `Exam Date: ${studyData.examDate}\n`;
-    text += `Sonographer: ${studyData.sonographer || 'Not entered'}\n`;
+    text += `Reporting Sonographer: ${studyData.sonographer || 'Not entered'}\n`;
     text += `Interpreting Physician: ${studyData.interpretingPhysician || 'Not entered'}\n`;
-    text += `Classification Protocol: ${studyData.classificationSystem.replace('_', ' ')}\n\n`;
+    text += `Diagnostic Protocol: ${studyData.classificationSystem.replace('_', ' ')}\n`;
+    if (signedOff) {
+      text += `Status: VERIFIED & SIGNED OFF (${signOffTimestamp})\n`;
+    }
+    text += `\n`;
 
-    text += `CLINICAL IMPRESSION SUMMARY\n`;
+    text += `CLINICAL IMPRESSION & SUMMARY\n`;
     text += `------------------------------------------------------------------\n`;
-    text += `RIGHT INTERNAL CAROTID ARTERY (ICA):\n`;
+    text += `${synthesizedNarrative.overall}\n\n`;
+
+    text += `HEMODYNAMIC MEASUREMENTS SUMMARY\n`;
+    text += `------------------------------------------------------------------\n`;
+    text += `RIGHT SYSTEM:\n`;
     text += `  - Suggested Grade: ${r.suggestedClassification}\n`;
     text += `  - Confirmed Grade: ${r.confirmedClassification}\n`;
     text += `  - Peak Stenotic PSV: ${r.highestIcaPsv !== null ? r.highestIcaPsv + ' cm/s' : 'N/A'}\n`;
@@ -110,14 +131,10 @@ export const ClinicalReport: React.FC<ClinicalReportProps> = ({
     text += `  - Distal CCA PSV: ${r.distalCcaPsv !== null ? r.distalCcaPsv + ' cm/s' : 'N/A'}\n`;
     text += `  - ICA/CCA PSV Ratio: ${r.icaCcaRatio !== null ? r.icaCcaRatio : 'N/A'}\n`;
     text += `  - Max Plaque Site: ${r.maxPlaqueLocation || 'None detected'}\n`;
-    text += `  - Plaque Morphology: ${r.plaqueMorphology || 'N/A'}\n`;
-    text += `  - NASCET Longitudinal Estimate: ${r.nascetEstimateLongitudinal !== null ? r.nascetEstimateLongitudinal + '%' : 'N/A'}\n`;
-    text += `  - NASCET Transverse Estimate: ${r.nascetEstimateTransverse !== null ? r.nascetEstimateTransverse + '%' : 'N/A'}\n`;
-    text += `  - Vertebral Flow Direction: ${r.vertebralFlowDirection.toUpperCase()}\n`;
-    text += `  - Subclavian Findings: ${r.subclavianFindings}\n`;
-    text += `  - Intima-Media Thickness (IMT): ${r.imtMm !== null ? r.imtMm + ' mm' : 'N/A'} (Cutoff: >${studyData.imtThresholdMm} mm)\n\n`;
+    text += `  - Vertebral Flow: ${r.vertebralFlowDirection.toUpperCase()}\n`;
+    text += `  - Subclavian Findings: ${r.subclavianFindings}\n\n`;
 
-    text += `LEFT INTERNAL CAROTID ARTERY (ICA):\n`;
+    text += `LEFT SYSTEM:\n`;
     text += `  - Suggested Grade: ${l.suggestedClassification}\n`;
     text += `  - Confirmed Grade: ${l.confirmedClassification}\n`;
     text += `  - Peak Stenotic PSV: ${l.highestIcaPsv !== null ? l.highestIcaPsv + ' cm/s' : 'N/A'}\n`;
@@ -125,58 +142,24 @@ export const ClinicalReport: React.FC<ClinicalReportProps> = ({
     text += `  - Distal CCA PSV: ${l.distalCcaPsv !== null ? l.distalCcaPsv + ' cm/s' : 'N/A'}\n`;
     text += `  - ICA/CCA PSV Ratio: ${l.icaCcaRatio !== null ? l.icaCcaRatio : 'N/A'}\n`;
     text += `  - Max Plaque Site: ${l.maxPlaqueLocation || 'None detected'}\n`;
-    text += `  - Plaque Morphology: ${l.plaqueMorphology || 'N/A'}\n`;
-    text += `  - NASCET Longitudinal Estimate: ${l.nascetEstimateLongitudinal !== null ? l.nascetEstimateLongitudinal + '%' : 'N/A'}\n`;
-    text += `  - NASCET Transverse Estimate: ${l.nascetEstimateTransverse !== null ? l.nascetEstimateTransverse + '%' : 'N/A'}\n`;
-    text += `  - Vertebral Flow Direction: ${l.vertebralFlowDirection.toUpperCase()}\n`;
-    text += `  - Subclavian Findings: ${l.subclavianFindings}\n`;
-    text += `  - Intima-Media Thickness (IMT): ${l.imtMm !== null ? l.imtMm + ' mm' : 'N/A'} (Cutoff: >${studyData.imtThresholdMm} mm)\n\n`;
+    text += `  - Vertebral Flow: ${l.vertebralFlowDirection.toUpperCase()}\n`;
+    text += `  - Subclavian Findings: ${l.subclavianFindings}\n\n`;
 
-    if (studyData.plaques.length > 0) {
-      text += `REGISTERED PLAQUE MORPHOLOGY PROFILE\n`;
-      text += `------------------------------------------------------------------\n`;
-      studyData.plaques.forEach((pl, idx) => {
-        text += `Plaque #${idx + 1} (${pl.locationDescription}):\n`;
-        text += `  - Point of Max Thickness: ${SEGMENTS_META[pl.maxPlaqueSite]?.shortName || pl.maxPlaqueSite} (${pl.maxThicknessMm !== null ? pl.maxThicknessMm + ' mm' : 'Not measured'})\n`;
-        text += `  - Composition: ${pl.composition}\n`;
-        text += `  - Surface Profile: ${pl.surface}\n`;
-        text += `  - Calcific Shadowing: ${pl.calcificShadowing}\n`;
-        text += `  - Luminal Narrowing visible: ${pl.luminalNarrowingVisible}\n`;
-        if (pl.freeTextDescription) {
-          text += `  - Notes: ${pl.freeTextDescription}\n`;
-        }
-        text += `\n`;
+    if (studyData.nonCarotidFindings.length > 0) {
+      text += `NON-CAROTID / ASSOCIATED FINDINGS:\n`;
+      studyData.nonCarotidFindings.forEach(f => {
+        text += `  - [${f.side.toUpperCase()}] ${f.type}${f.sizeMm ? ` (${f.sizeMm} mm)` : ''}: ${f.comments || 'Visualized'}\n`;
       });
+      text += `\n`;
     }
 
-    text += `DETAILED VESSEL MEASUREMENTS MATRIX\n`;
-    text += `------------------------------------------------------------------\n`;
-    text += `Segment ID | Side | PSV (cm/s) | EDV (cm/s) | Flow | Waveform | Pathologies\n`;
-    text += `------------------------------------------------------------------\n`;
-    Object.keys(studyData.segments).forEach(id => {
-      const s = studyData.segments[id];
-      const m = SEGMENTS_META[id];
-      if (!m) return;
-      if (id.startsWith('l_bct_') && !studyData.variantLeftBct) return;
-      
-      const psvStr = s.psv !== null ? s.psv.toString().padStart(5) : ' N/A ';
-      const edvStr = s.edv !== null ? s.edv.toString().padStart(5) : ' N/A ';
-      const pathList: string[] = [];
-      if (s.plaquePresent) pathList.push('Plaque');
-      if (s.stenosisPresent) pathList.push('Stenosis');
-      if (s.intimalThickening) pathList.push('Thickened IMT');
-      const pathsStr = pathList.length > 0 ? pathList.join(', ') : 'None';
-
-      text += `${m.shortName.padEnd(16)} | ${s.side.padEnd(6)} | ${psvStr} | ${edvStr} | ${s.flowDirection.padEnd(12)} | ${(s.waveform || 'N/A').padEnd(16)} | ${pathsStr}\n`;
-    });
-    
     if (studyData.studyComments) {
-      text += `\nSONOGRAPHER CONCLUSION & DISCUSSION\n`;
+      text += `SONOGRAPHER NOTES & DISCUSSION:\n`;
       text += `------------------------------------------------------------------\n`;
-      text += `${studyData.studyComments}\n`;
+      text += `${studyData.studyComments}\n\n`;
     }
 
-    text += `\nReport compiled automatically in AI Studio on: ${new Date().toLocaleString()}\n`;
+    text += `Report compiled on: ${new Date().toLocaleString()}\n`;
     return text;
   };
 
@@ -198,446 +181,421 @@ export const ClinicalReport: React.FC<ClinicalReportProps> = ({
   const lCcaSuitability = checkCcaSuitability(lCcaDist);
 
   return (
-    <div id="clinical-report-root" className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden flex flex-col">
+    <div id="clinical-report-root" className="space-y-6 max-w-6xl mx-auto pb-12 print:max-w-none print:p-0">
       
-      {/* Header toolbar */}
-      <div className="p-4 bg-slate-900 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <FileText className="w-5 h-5 text-blue-400" />
-          <div>
-            <h3 className="text-sm font-bold tracking-wide">Live Consolidated Clinical Report</h3>
-            <span className="text-[10px] text-slate-400">Updates continuously with entered canvas values. Ready for EMR copying.</span>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 shrink-0">
-          <button
-            id="report-copy-btn"
-            onClick={handleCopyToClipboard}
-            className="flex items-center gap-1 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded text-xs font-bold transition-all"
-          >
-            {copied ? (
-              <>
-                <Check className="w-3.5 h-3.5 text-emerald-400" />
-                <span className="text-emerald-400">Copied!</span>
-              </>
+      {/* 1. Validation & Quality Assurance Banner */}
+      <div className="bg-[#0b1329] border border-slate-800 rounded-xl p-5 shadow-lg print:hidden">
+        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div className="flex items-center gap-2.5">
+            {validationIssues.length === 0 ? (
+              <ShieldCheck className="w-5 h-5 text-emerald-400" />
             ) : (
-              <>
-                <Copy className="w-3.5 h-3.5" />
-                <span>Copy EMR Text</span>
-              </>
+              <ShieldAlert className="w-5 h-5 text-amber-400" />
             )}
-          </button>
-          <button
-            id="report-print-btn"
-            onClick={handlePrint}
-            className="flex items-center gap-1 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded text-xs font-bold transition-all"
-          >
-            <Printer className="w-3.5 h-3.5" />
-            <span>Print Report</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Demographics Block */}
-      <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 grid grid-cols-2 md:grid-cols-4 gap-4 text-xs text-slate-600">
-        <div>
-          <span className="font-bold text-slate-400 block uppercase text-[9px] mb-0.5">Patient Name</span>
-          <span className="font-bold text-slate-800 text-sm">{studyData.patientName || '—'}</span>
-        </div>
-        <div>
-          <span className="font-bold text-slate-400 block uppercase text-[9px] mb-0.5">MRID / CHART ID</span>
-          <span className="font-semibold text-slate-800 font-mono text-sm">{studyData.patientId || '—'}</span>
-        </div>
-        <div>
-          <span className="font-bold text-slate-400 block uppercase text-[9px] mb-0.5">Exam Date</span>
-          <span className="font-semibold text-slate-800">{studyData.examDate}</span>
-        </div>
-        <div>
-          <span className="font-bold text-slate-400 block uppercase text-[9px] mb-0.5">Standard Protocol</span>
-          <span className="font-bold text-blue-600 uppercase text-[10px]">{studyData.classificationSystem.replace('_', ' ')}</span>
-        </div>
-        {studyData.sonographer && (
-          <div>
-            <span className="font-bold text-slate-400 block uppercase text-[9px] mb-0.5">Sonographer</span>
-            <span className="font-medium text-slate-700">{studyData.sonographer}</span>
-          </div>
-        )}
-        {studyData.interpretingPhysician && (
-          <div>
-            <span className="font-bold text-slate-400 block uppercase text-[9px] mb-0.5">Physician</span>
-            <span className="font-medium text-slate-700">{studyData.interpretingPhysician}</span>
-          </div>
-        )}
-      </div>
-
-      {/* Side-by-side Classification Overrides & Summary Panels */}
-      <div className="p-6 grid grid-cols-1 lg:grid-cols-2 gap-6 border-b border-slate-200">
-        
-        {/* ==================== RIGHT SIDE REPORT ==================== */}
-        <div className="space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-            <span className="text-xs font-bold text-slate-800 uppercase flex items-center gap-1.5">
-              <ChevronRight className="w-4 h-4 text-blue-500" /> Right System Haemodynamics
-            </span>
-          </div>
-
-          {/* ICA Classification Section */}
-          <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl space-y-3">
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Suggested Classification</span>
-                <span className="text-sm font-extrabold text-blue-700 block mt-0.5">{rightSummary.suggestedClassification}</span>
-              </div>
-              <div className="text-right">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Confirmed Classification</span>
-                <span className="text-sm font-extrabold text-emerald-700 block mt-0.5">{rightSummary.confirmedClassification}</span>
-              </div>
-            </div>
-
-            <div className="bg-white border border-slate-100 p-2.5 rounded-lg flex flex-col gap-2">
-              <span className="text-[9px] font-bold text-slate-400 uppercase">Confirm or Override Stenosis Grade</span>
-              <div className="flex gap-2">
-                <button
-                  id="btn-confirm-right"
-                  onClick={() => onConfirmClassification('right', rightSummary.suggestedClassification)}
-                  className="flex-1 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] rounded transition-all"
-                >
-                  Confirm Suggested ({rightSummary.suggestedClassification.split(' ')[0]})
-                </button>
-                <select
-                  id="select-override-right"
-                  value={studyData.classifications.right.confirmed}
-                  onChange={(e) => onConfirmClassification('right', e.target.value)}
-                  className="bg-slate-50 border border-slate-200 rounded px-2 text-[10px] focus:outline-none"
-                >
-                  <option value="Not Classified">Manual Override...</option>
-                  {options.map(o => (
-                    <option key={o} value={o}>{o}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </div>
-
-          {/* Core Velocity Summaries */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
-            <div className="bg-white border border-slate-100 p-3 rounded-lg">
-              <span className="text-[10px] font-bold text-slate-400 uppercase block">Peak ICA PSV</span>
-              <span className="font-mono text-base font-bold text-slate-800">
-                {rightSummary.highestIcaPsv !== null ? `${rightSummary.highestIcaPsv} cm/s` : '—'}
-              </span>
-            </div>
-            <div className="bg-white border border-slate-100 p-3 rounded-lg">
-              <span className="text-[10px] font-bold text-slate-400 uppercase block">Corresponding EDV</span>
-              <span className="font-mono text-base font-bold text-slate-800">
-                {rightSummary.correspondingIcaEdv !== null ? `${rightSummary.correspondingIcaEdv} cm/s` : '—'}
-              </span>
-            </div>
-            <div className="bg-white border border-slate-100 p-3 rounded-lg col-span-2 sm:col-span-1">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold text-slate-400 uppercase">ICA/CCA Ratio</span>
-                {!rCcaSuitability.suitable && rightSummary.highestIcaPsv !== null && (
-                  <span className="text-amber-500" title="CCA Reference segment is abnormal. Ratio may be unreliable.">
-                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                  </span>
-                )}
-              </div>
-              <span className="font-mono text-base font-bold text-slate-800 block">
-                {rightSummary.icaCcaRatio !== null ? rightSummary.icaCcaRatio : '—'}
+            <div>
+              <h3 className="text-xs font-black uppercase tracking-wider text-slate-100">
+                Quality Assurance & Clinical Consistency Engine
+              </h3>
+              <span className="text-[10px] text-slate-400">
+                {validationIssues.length === 0
+                  ? 'All hemodynamic parameters, flow directions, and reference segments passed validation.'
+                  : `${validationIssues.length} issue(s) flagged for sonographer review.`}
               </span>
             </div>
           </div>
 
-          {/* Ratio Warning Banner */}
-          {!rCcaSuitability.suitable && rightSummary.highestIcaPsv !== null && (
-            <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-[10px] text-amber-800 flex items-start gap-1.5 leading-normal">
-              <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-              <div>
-                <span className="font-bold">ICA/CCA ratio may be unreliable:</span> Standard CCA distal reference segment is abnormal ({rCcaSuitability.reason}).
-              </div>
-            </div>
-          )}
-
-          {/* Morphology Summary */}
-          <div className="space-y-2 text-xs text-slate-600 bg-slate-50/50 p-4 rounded-xl border border-slate-100">
-            <div>
-              <span className="font-bold text-slate-400 block uppercase text-[9px]">Max Plaque Location</span>
-              <span className="font-medium text-slate-800">{rightSummary.maxPlaqueLocation || 'No plaques registered'}</span>
-            </div>
-            {rightSummary.plaqueMorphology && (
-              <div>
-                <span className="font-bold text-slate-400 block uppercase text-[9px]">Plaque Morphology</span>
-                <span className="font-medium text-slate-800">{rightSummary.plaqueMorphology}</span>
-              </div>
-            )}
-            <div>
-              <span className="font-bold text-slate-400 block uppercase text-[9px]">Vertebral flow direction</span>
-              <span className="font-semibold text-slate-800 uppercase">{rightSummary.vertebralFlowDirection}</span>
-            </div>
-            <div>
-              <span className="font-bold text-slate-400 block uppercase text-[9px]">Subclavian findings</span>
-              <span className="font-medium text-slate-800 leading-relaxed block">{rightSummary.subclavianFindings}</span>
-            </div>
-            {rightSummary.imtMm !== null && (
-              <div>
-                <span className="font-bold text-slate-400 block uppercase text-[9px]">Intima-Media Thickness (IMT)</span>
-                <span className={`font-semibold ${rightSummary.imtMm > studyData.imtThresholdMm ? 'text-blue-600 font-bold' : 'text-slate-800'}`}>
-                  {rightSummary.imtMm} mm {rightSummary.imtMm > studyData.imtThresholdMm ? '(Thickened / Increased)' : '(Normal)'}
-                </span>
-              </div>
-            )}
-            {(rightSummary.nascetEstimateLongitudinal !== null || rightSummary.nascetEstimateTransverse !== null) && (
-              <div className="border-t border-slate-200/60 pt-2 grid grid-cols-2 gap-2">
-                {rightSummary.nascetEstimateLongitudinal !== null && (
-                  <div>
-                    <span className="font-bold text-slate-400 block uppercase text-[9px]">NASCET Longitudinal</span>
-                    <span className="font-mono font-bold text-slate-800 text-[11px]">{rightSummary.nascetEstimateLongitudinal}% diameter reduction</span>
-                  </div>
-                )}
-                {rightSummary.nascetEstimateTransverse !== null && (
-                  <div>
-                    <span className="font-bold text-slate-400 block uppercase text-[9px]">NASCET Transverse</span>
-                    <span className="font-mono font-bold text-slate-800 text-[11px]">{rightSummary.nascetEstimateTransverse}% diameter reduction</span>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* ==================== LEFT SIDE REPORT ==================== */}
-        <div className="space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-            <span className="text-xs font-bold text-slate-800 uppercase flex items-center gap-1.5">
-              <ChevronRight className="w-4 h-4 text-blue-500" /> Left System Haemodynamics
-            </span>
-          </div>
-
-          {/* ICA Classification Section */}
-          <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl space-y-3">
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Suggested Classification</span>
-                <span className="text-sm font-extrabold text-blue-700 block mt-0.5">{leftSummary.suggestedClassification}</span>
-              </div>
-              <div className="text-right">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Confirmed Classification</span>
-                <span className="text-sm font-extrabold text-emerald-700 block mt-0.5">{leftSummary.confirmedClassification}</span>
-              </div>
-            </div>
-
-            <div className="bg-white border border-slate-100 p-2.5 rounded-lg flex flex-col gap-2">
-              <span className="text-[9px] font-bold text-slate-400 uppercase">Confirm or Override Stenosis Grade</span>
-              <div className="flex gap-2">
-                <button
-                  id="btn-confirm-left"
-                  onClick={() => onConfirmClassification('left', leftSummary.suggestedClassification)}
-                  className="flex-1 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] rounded transition-all"
-                >
-                  Confirm Suggested ({leftSummary.suggestedClassification.split(' ')[0]})
-                </button>
-                <select
-                  id="select-override-left"
-                  value={studyData.classifications.left.confirmed}
-                  onChange={(e) => onConfirmClassification('left', e.target.value)}
-                  className="bg-slate-50 border border-slate-200 rounded px-2 text-[10px] focus:outline-none"
-                >
-                  <option value="Not Classified">Manual Override...</option>
-                  {options.map(o => (
-                    <option key={o} value={o}>{o}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </div>
-
-          {/* Core Velocity Summaries */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
-            <div className="bg-white border border-slate-100 p-3 rounded-lg">
-              <span className="text-[10px] font-bold text-slate-400 uppercase block">Peak ICA PSV</span>
-              <span className="font-mono text-base font-bold text-slate-800">
-                {leftSummary.highestIcaPsv !== null ? `${leftSummary.highestIcaPsv} cm/s` : '—'}
-              </span>
-            </div>
-            <div className="bg-white border border-slate-100 p-3 rounded-lg">
-              <span className="text-[10px] font-bold text-slate-400 uppercase block">Corresponding EDV</span>
-              <span className="font-mono text-base font-bold text-slate-800">
-                {leftSummary.correspondingIcaEdv !== null ? `${leftSummary.correspondingIcaEdv} cm/s` : '—'}
-              </span>
-            </div>
-            <div className="bg-white border border-slate-100 p-3 rounded-lg col-span-2 sm:col-span-1">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold text-slate-400 uppercase">ICA/CCA Ratio</span>
-                {!lCcaSuitability.suitable && leftSummary.highestIcaPsv !== null && (
-                  <span className="text-amber-500" title="CCA Reference segment is abnormal. Ratio may be unreliable.">
-                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                  </span>
-                )}
-              </div>
-              <span className="font-mono text-base font-bold text-slate-800 block">
-                {leftSummary.icaCcaRatio !== null ? leftSummary.icaCcaRatio : '—'}
-              </span>
-            </div>
-          </div>
-
-          {/* Ratio Warning Banner */}
-          {!lCcaSuitability.suitable && leftSummary.highestIcaPsv !== null && (
-            <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-[10px] text-amber-800 flex items-start gap-1.5 leading-normal">
-              <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-              <div>
-                <span className="font-bold">ICA/CCA ratio may be unreliable:</span> Standard CCA distal reference segment is abnormal ({lCcaSuitability.reason}).
-              </div>
-            </div>
-          )}
-
-          {/* Morphology Summary */}
-          <div className="space-y-2 text-xs text-slate-600 bg-slate-50/50 p-4 rounded-xl border border-slate-100">
-            <div>
-              <span className="font-bold text-slate-400 block uppercase text-[9px]">Max Plaque Location</span>
-              <span className="font-medium text-slate-800">{leftSummary.maxPlaqueLocation || 'No plaques registered'}</span>
-            </div>
-            {leftSummary.plaqueMorphology && (
-              <div>
-                <span className="font-bold text-slate-400 block uppercase text-[9px]">Plaque Morphology</span>
-                <span className="font-medium text-slate-800">{leftSummary.plaqueMorphology}</span>
-              </div>
-            )}
-            <div>
-              <span className="font-bold text-slate-400 block uppercase text-[9px]">Vertebral flow direction</span>
-              <span className="font-semibold text-slate-800 uppercase">{leftSummary.vertebralFlowDirection}</span>
-            </div>
-            <div>
-              <span className="font-bold text-slate-400 block uppercase text-[9px]">Subclavian findings</span>
-              <span className="font-medium text-slate-800 leading-relaxed block">{leftSummary.subclavianFindings}</span>
-            </div>
-            {leftSummary.imtMm !== null && (
-              <div>
-                <span className="font-bold text-slate-400 block uppercase text-[9px]">Intima-Media Thickness (IMT)</span>
-                <span className={`font-semibold ${leftSummary.imtMm > studyData.imtThresholdMm ? 'text-blue-600 font-bold' : 'text-slate-800'}`}>
-                  {leftSummary.imtMm} mm {leftSummary.imtMm > studyData.imtThresholdMm ? '(Thickened / Increased)' : '(Normal)'}
-                </span>
-              </div>
-            )}
-            {(leftSummary.nascetEstimateLongitudinal !== null || leftSummary.nascetEstimateTransverse !== null) && (
-              <div className="border-t border-slate-200/60 pt-2 grid grid-cols-2 gap-2">
-                {leftSummary.nascetEstimateLongitudinal !== null && (
-                  <div>
-                    <span className="font-bold text-slate-400 block uppercase text-[9px]">NASCET Longitudinal</span>
-                    <span className="font-mono font-bold text-slate-800 text-[11px]">{leftSummary.nascetEstimateLongitudinal}% diameter reduction</span>
-                  </div>
-                )}
-                {leftSummary.nascetEstimateTransverse !== null && (
-                  <div>
-                    <span className="font-bold text-slate-400 block uppercase text-[9px]">NASCET Transverse</span>
-                    <span className="font-mono font-bold text-slate-800 text-[11px]">{leftSummary.nascetEstimateTransverse}% diameter reduction</span>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-
-      </div>
-
-      {/* Comprehensive Raw Tabular Matrix of all segments */}
-      <div className="p-6 space-y-3">
-        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Comprehensive Segment Measurement Matrix</span>
-        <div className="border border-slate-200 rounded-xl overflow-hidden overflow-x-auto bg-white shadow-sm">
-          <table className="w-full text-left border-collapse text-xs">
-            <thead>
-              <tr className="bg-slate-900 text-white font-bold uppercase tracking-wider text-[10px]">
-                <th className="p-3">Arterial Segment</th>
-                <th className="p-3">Side</th>
-                <th className="p-3 font-mono">PSV (cm/s)</th>
-                <th className="p-3 font-mono">EDV (cm/s)</th>
-                <th className="p-3">Flow Direction</th>
-                <th className="p-3">Waveform</th>
-                <th className="p-3">Wall Findings / Pathology</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-              {Object.keys(studyData.segments).map(id => {
-                const s = studyData.segments[id];
-                const meta = SEGMENTS_META[id];
-                if (!meta) return null;
-                if (id === 'arch') return null; // skip common root
-                if (id.startsWith('l_bct_') && !studyData.variantLeftBct) return null; // hide variant
-
-                let textClass = 'text-slate-800';
-                if (s.stenosisPresent) textClass = 'text-red-600 font-bold';
-                else if (s.plaquePresent) textClass = 'text-amber-700 font-bold';
-
-                const paths: string[] = [];
-                if (s.stenosisPresent) paths.push('Stenosis');
-                if (s.plaquePresent) paths.push('Plaque');
-                if (s.intimalThickening) paths.push('Increased IMT');
-
-                return (
-                  <tr key={id} className={`hover:bg-slate-50/50 ${textClass}`}>
-                    <td className="p-3 font-semibold">{meta.name}</td>
-                    <td className="p-3 capitalize">{s.side}</td>
-                    <td className="p-3 font-mono">{s.psv !== null ? s.psv : '—'}</td>
-                    <td className="p-3 font-mono">{s.edv !== null ? s.edv : '—'}</td>
-                    <td className="p-3 uppercase font-semibold text-[10px]">
-                      {s.flowDirection === 'not_assessed' ? 'Unassessed' : s.flowDirection}
-                    </td>
-                    <td className="p-3 italic text-slate-500">{s.waveform}</td>
-                    <td className="p-3">
-                      {paths.length > 0 ? (
-                        <div className="flex gap-1.5 flex-wrap">
-                          {s.stenosisPresent && <span className="bg-red-100 text-red-800 text-[9px] font-bold px-1.5 py-0.5 rounded border border-red-200">Stenosis</span>}
-                          {s.plaquePresent && <span className="bg-amber-100 text-amber-800 text-[9px] font-bold px-1.5 py-0.5 rounded border border-amber-200">Plaque</span>}
-                          {s.intimalThickening && <span className="bg-blue-100 text-blue-800 text-[9px] font-bold px-1.5 py-0.5 rounded border border-blue-200">Thickened IMT</span>}
-                        </div>
-                      ) : (
-                        <span className="text-slate-400 italic">No abnormalities</span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Synthesized Impression Card */}
-      <div className="p-6 border-t border-slate-200 bg-cyan-950/5 space-y-3">
-        <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-cyan-600" />
-            <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-              Synthesized Clinical Impression (Auto-Generated Narrative)
-            </h4>
+            <button
+              type="button"
+              onClick={handleToggleSignOff}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                signedOff
+                  ? 'bg-emerald-600 text-white shadow-md shadow-emerald-950/50'
+                  : 'bg-[#0f172a] hover:bg-slate-800 text-slate-300 border border-slate-700'
+              }`}
+            >
+              <UserCheck className="w-4 h-4" />
+              <span>{signedOff ? 'Study Verified & Signed Off' : 'Sign Off Study'}</span>
+            </button>
           </div>
-          <button
-            id="copy-impression-only-btn"
-            onClick={handleCopyImpression}
-            className="flex items-center gap-1 px-2.5 py-1 bg-cyan-600 hover:bg-cyan-700 text-white rounded text-[10px] font-bold transition-all shadow-sm"
-          >
-            {copiedImpression ? (
-              <>
-                <Check className="w-3 h-3 text-white" />
-                <span>Copied Impression!</span>
-              </>
-            ) : (
-              <>
-                <Copy className="w-3 h-3" />
-                <span>Copy Impression Only</span>
-              </>
-            )}
-          </button>
         </div>
-        <div className="p-3.5 bg-white border border-cyan-200 rounded-xl text-xs font-mono text-slate-800 whitespace-pre-wrap leading-relaxed shadow-sm">
-          {synthesizedNarrative.overall}
-        </div>
+
+        {validationIssues.length > 0 && (
+          <div className="mt-3 space-y-2">
+            {validationIssues.map(iss => (
+              <div
+                key={iss.id}
+                className={`p-2.5 rounded-lg border text-xs flex items-start gap-2.5 ${
+                  iss.severity === 'error'
+                    ? 'bg-rose-950/40 border-rose-800 text-rose-200'
+                    : iss.severity === 'warning'
+                    ? 'bg-amber-950/30 border-amber-800 text-amber-200'
+                    : 'bg-cyan-950/20 border-cyan-800/60 text-cyan-200'
+                }`}
+              >
+                {iss.severity === 'error' ? (
+                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                ) : iss.severity === 'warning' ? (
+                  <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                ) : (
+                  <Sparkles className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
+                )}
+                <div>
+                  <span className="font-bold block text-slate-100">{iss.title}</span>
+                  <span className="text-[11px] opacity-90">{iss.message}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* Narrative Comments and Manual Input Conclusion Area */}
-      <div className="p-6 border-t border-slate-200 bg-slate-50 space-y-4">
-        <div>
-          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-2">
+      {/* 2. Main Report Paper Card (Dark theme onscreen, crisp white on print) */}
+      <div className="bg-[#0b1329] border border-slate-800 rounded-xl shadow-xl overflow-hidden print:bg-white print:border-none print:shadow-none print:text-black">
+        
+        {/* Header Toolbar */}
+        <div className="p-4 bg-[#0f172a] border-b border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 print:hidden">
+          <div className="flex items-center gap-2">
+            <FileText className="w-5 h-5 text-cyan-400" />
+            <div>
+              <h3 className="text-sm font-black uppercase tracking-wider text-slate-100">
+                Consolidated Carotid Duplex Clinical Report
+              </h3>
+              <span className="text-[10px] text-slate-400">
+                Live synchronization with worksheet measurements.
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              id="report-copy-btn"
+              onClick={handleCopyToClipboard}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-[#0b101f] hover:bg-slate-800 text-slate-200 border border-slate-700 rounded-lg text-xs font-bold transition-all cursor-pointer"
+            >
+              {copied ? (
+                <>
+                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                  <span className="text-emerald-400">Copied!</span>
+                </>
+              ) : (
+                <>
+                  <Copy className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>Copy EMR Report</span>
+                </>
+              )}
+            </button>
+            <button
+              id="report-print-btn"
+              onClick={handlePrint}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-slate-950 rounded-lg text-xs font-black transition-all shadow-md cursor-pointer"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              <span>Print Worksheet</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Patient Demographics & Exam Details Banner */}
+        <div className="px-6 py-4 bg-[#0f172a]/60 border-b border-slate-800/80 grid grid-cols-2 md:grid-cols-4 gap-4 text-xs text-slate-400 print:bg-white print:border-b-2 print:border-black print:text-black">
+          <div>
+            <span className="font-bold text-slate-500 block uppercase text-[9px] mb-0.5 print:text-black">Patient Name</span>
+            <span className="font-bold text-slate-100 text-sm print:text-black">{studyData.patientName || '—'}</span>
+          </div>
+          <div>
+            <span className="font-bold text-slate-500 block uppercase text-[9px] mb-0.5 print:text-black">MRN / Chart ID</span>
+            <span className="font-semibold text-slate-200 font-mono text-sm print:text-black">{studyData.patientId || '—'}</span>
+          </div>
+          <div>
+            <span className="font-bold text-slate-500 block uppercase text-[9px] mb-0.5 print:text-black">Exam Date</span>
+            <span className="font-semibold text-slate-200 print:text-black">{studyData.examDate}</span>
+          </div>
+          <div>
+            <span className="font-bold text-slate-500 block uppercase text-[9px] mb-0.5 print:text-black">Protocol</span>
+            <span className="font-bold text-cyan-400 uppercase text-[10px] print:text-black">{studyData.classificationSystem.replace('_', ' ')}</span>
+          </div>
+          {studyData.sonographer && (
+            <div>
+              <span className="font-bold text-slate-500 block uppercase text-[9px] mb-0.5 print:text-black">Sonographer</span>
+              <span className="font-medium text-slate-300 print:text-black">{studyData.sonographer}</span>
+            </div>
+          )}
+          {studyData.interpretingPhysician && (
+            <div>
+              <span className="font-bold text-slate-500 block uppercase text-[9px] mb-0.5 print:text-black">Physician</span>
+              <span className="font-medium text-slate-300 print:text-black">{studyData.interpretingPhysician}</span>
+            </div>
+          )}
+          {signedOff && (
+            <div className="col-span-2">
+              <span className="font-bold text-emerald-400 block uppercase text-[9px] mb-0.5">Verification Status</span>
+              <span className="font-mono text-xs text-emerald-300 font-bold">Verified on {signOffTimestamp}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Synthesized Impression Card */}
+        <div className="p-6 border-b border-slate-800 bg-[#0d1527]/50 space-y-3 print:bg-white print:border-b print:border-gray-300">
+          <div className="flex items-center justify-between print:hidden">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-cyan-400" />
+              <h4 className="text-xs font-black uppercase tracking-wider text-slate-100">
+                Synthesized Clinical Impression (Vascular Report Language)
+              </h4>
+            </div>
+            <button
+              id="copy-impression-only-btn"
+              onClick={handleCopyImpression}
+              className="flex items-center gap-1 px-2.5 py-1 bg-cyan-600/20 hover:bg-cyan-600/30 border border-cyan-600/50 text-cyan-300 rounded text-[10px] font-bold transition-all"
+            >
+              {copiedImpression ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+              <span>{copiedImpression ? 'Copied!' : 'Copy Impression Only'}</span>
+            </button>
+          </div>
+
+          <div className="p-4 bg-[#080d19] border border-cyan-900/50 rounded-xl text-xs font-mono text-cyan-200 whitespace-pre-wrap leading-relaxed shadow-sm print:bg-white print:border print:border-black print:text-black print:p-2">
+            {synthesizedNarrative.overall}
+          </div>
+        </div>
+
+        {/* Side-by-Side Hemodynamic Panels */}
+        <div className="p-6 grid grid-cols-1 lg:grid-cols-2 gap-6 border-b border-slate-800 print:grid-cols-2 print:border-b print:border-gray-300">
+          
+          {/* ================= RIGHT SIDE REPORT ================= */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-2 print:border-black">
+              <span className="text-xs font-black uppercase text-slate-100 flex items-center gap-1.5 print:text-black">
+                <ChevronRight className="w-4 h-4 text-cyan-400 print:hidden" /> Right Carotid System
+              </span>
+            </div>
+
+            {/* Suggested & Confirmed Grade */}
+            <div className="bg-[#0f172a] border border-slate-800 p-4 rounded-xl space-y-3 print:bg-white print:border print:border-gray-300">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block print:text-black">Suggested Grade</span>
+                  <span className="text-sm font-black text-cyan-400 block mt-0.5 print:text-black">{rightSummary.suggestedClassification}</span>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block print:text-black">Confirmed Grade</span>
+                  <span className="text-sm font-black text-emerald-400 block mt-0.5 print:text-black">{rightSummary.confirmedClassification}</span>
+                </div>
+              </div>
+
+              <div className="bg-[#0b101f] border border-slate-800 p-2.5 rounded-lg flex flex-col gap-2 print:hidden">
+                <span className="text-[9px] font-bold text-slate-400 uppercase">Confirm or Override Stenosis Grade</span>
+                <div className="flex gap-2">
+                  <button
+                    id="btn-confirm-right"
+                    onClick={() => onConfirmClassification('right', rightSummary.suggestedClassification)}
+                    className="flex-1 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-black text-[10px] rounded transition-all cursor-pointer"
+                  >
+                    Confirm Suggested
+                  </button>
+                  <select
+                    id="select-override-right"
+                    value={studyData.classifications.right.confirmed}
+                    onChange={(e) => onConfirmClassification('right', e.target.value)}
+                    className="bg-[#0f172a] border border-slate-700 rounded px-2 text-[10px] text-slate-200 focus:outline-none"
+                  >
+                    <option value="Not Classified">Manual Override...</option>
+                    {options.map(o => (
+                      <option key={o} value={o}>{o}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Core Velocity Metrics */}
+            <div className="grid grid-cols-3 gap-3 text-xs font-mono">
+              <div className="bg-[#0f172a] border border-slate-800 p-3 rounded-xl print:bg-white print:border">
+                <span className="text-[10px] font-bold text-slate-400 uppercase block font-sans print:text-black">Peak PSV</span>
+                <span className="text-base font-black text-slate-100 print:text-black">
+                  {rightSummary.highestIcaPsv !== null ? `${rightSummary.highestIcaPsv} cm/s` : '—'}
+                </span>
+              </div>
+              <div className="bg-[#0f172a] border border-slate-800 p-3 rounded-xl print:bg-white print:border">
+                <span className="text-[10px] font-bold text-slate-400 uppercase block font-sans print:text-black">ICA EDV</span>
+                <span className="text-base font-black text-slate-100 print:text-black">
+                  {rightSummary.correspondingIcaEdv !== null ? `${rightSummary.correspondingIcaEdv} cm/s` : '—'}
+                </span>
+              </div>
+              <div className="bg-[#0f172a] border border-slate-800 p-3 rounded-xl print:bg-white print:border">
+                <span className="text-[10px] font-bold text-slate-400 uppercase block font-sans print:text-black">ICA/CCA Ratio</span>
+                <span className="text-base font-black text-cyan-400 print:text-black">
+                  {rightSummary.icaCcaRatio !== null ? rightSummary.icaCcaRatio : '—'}
+                </span>
+              </div>
+            </div>
+
+            {/* Additional details */}
+            <div className="bg-[#0f172a]/60 border border-slate-800 p-3.5 rounded-xl space-y-1.5 text-xs text-slate-300 print:bg-white print:border">
+              <div className="flex justify-between">
+                <span className="text-slate-400 print:text-black">Vertebral Flow:</span>
+                <span className="font-bold uppercase text-slate-100 print:text-black">{rightSummary.vertebralFlowDirection}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400 print:text-black">Subclavian Artery:</span>
+                <span className="text-slate-200 print:text-black">{rightSummary.subclavianFindings}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400 print:text-black">Plaque Burden:</span>
+                <span className="text-slate-200 print:text-black">{rightSummary.maxPlaqueLocation || 'None'}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* ================= LEFT SIDE REPORT ================= */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-2 print:border-black">
+              <span className="text-xs font-black uppercase text-slate-100 flex items-center gap-1.5 print:text-black">
+                <ChevronRight className="w-4 h-4 text-cyan-400 print:hidden" /> Left Carotid System
+              </span>
+            </div>
+
+            {/* Suggested & Confirmed Grade */}
+            <div className="bg-[#0f172a] border border-slate-800 p-4 rounded-xl space-y-3 print:bg-white print:border print:border-gray-300">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block print:text-black">Suggested Grade</span>
+                  <span className="text-sm font-black text-cyan-400 block mt-0.5 print:text-black">{leftSummary.suggestedClassification}</span>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block print:text-black">Confirmed Grade</span>
+                  <span className="text-sm font-black text-emerald-400 block mt-0.5 print:text-black">{leftSummary.confirmedClassification}</span>
+                </div>
+              </div>
+
+              <div className="bg-[#0b101f] border border-slate-800 p-2.5 rounded-lg flex flex-col gap-2 print:hidden">
+                <span className="text-[9px] font-bold text-slate-400 uppercase">Confirm or Override Stenosis Grade</span>
+                <div className="flex gap-2">
+                  <button
+                    id="btn-confirm-left"
+                    onClick={() => onConfirmClassification('left', leftSummary.suggestedClassification)}
+                    className="flex-1 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-black text-[10px] rounded transition-all cursor-pointer"
+                  >
+                    Confirm Suggested
+                  </button>
+                  <select
+                    id="select-override-left"
+                    value={studyData.classifications.left.confirmed}
+                    onChange={(e) => onConfirmClassification('left', e.target.value)}
+                    className="bg-[#0f172a] border border-slate-700 rounded px-2 text-[10px] text-slate-200 focus:outline-none"
+                  >
+                    <option value="Not Classified">Manual Override...</option>
+                    {options.map(o => (
+                      <option key={o} value={o}>{o}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Core Velocity Metrics */}
+            <div className="grid grid-cols-3 gap-3 text-xs font-mono">
+              <div className="bg-[#0f172a] border border-slate-800 p-3 rounded-xl print:bg-white print:border">
+                <span className="text-[10px] font-bold text-slate-400 uppercase block font-sans print:text-black">Peak PSV</span>
+                <span className="text-base font-black text-slate-100 print:text-black">
+                  {leftSummary.highestIcaPsv !== null ? `${leftSummary.highestIcaPsv} cm/s` : '—'}
+                </span>
+              </div>
+              <div className="bg-[#0f172a] border border-slate-800 p-3 rounded-xl print:bg-white print:border">
+                <span className="text-[10px] font-bold text-slate-400 uppercase block font-sans print:text-black">ICA EDV</span>
+                <span className="text-base font-black text-slate-100 print:text-black">
+                  {leftSummary.correspondingIcaEdv !== null ? `${leftSummary.correspondingIcaEdv} cm/s` : '—'}
+                </span>
+              </div>
+              <div className="bg-[#0f172a] border border-slate-800 p-3 rounded-xl print:bg-white print:border">
+                <span className="text-[10px] font-bold text-slate-400 uppercase block font-sans print:text-black">ICA/CCA Ratio</span>
+                <span className="text-base font-black text-cyan-400 print:text-black">
+                  {leftSummary.icaCcaRatio !== null ? leftSummary.icaCcaRatio : '—'}
+                </span>
+              </div>
+            </div>
+
+            {/* Additional details */}
+            <div className="bg-[#0f172a]/60 border border-slate-800 p-3.5 rounded-xl space-y-1.5 text-xs text-slate-300 print:bg-white print:border">
+              <div className="flex justify-between">
+                <span className="text-slate-400 print:text-black">Vertebral Flow:</span>
+                <span className="font-bold uppercase text-slate-100 print:text-black">{leftSummary.vertebralFlowDirection}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400 print:text-black">Subclavian Artery:</span>
+                <span className="text-slate-200 print:text-black">{leftSummary.subclavianFindings}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400 print:text-black">Plaque Burden:</span>
+                <span className="text-slate-200 print:text-black">{leftSummary.maxPlaqueLocation || 'None'}</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        {/* Detailed Vessel Matrix Table */}
+        <div className="p-6 space-y-3">
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block print:text-black">
+            Comprehensive Segment Measurements Matrix
+          </span>
+          <div className="border border-slate-800 rounded-xl overflow-hidden overflow-x-auto bg-[#0f172a] print:bg-white print:border print:border-black">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="bg-[#080d19] text-slate-300 font-bold uppercase tracking-wider text-[10px] border-b border-slate-800 print:bg-gray-100 print:text-black print:border-black">
+                  <th className="p-3">Arterial Segment</th>
+                  <th className="p-3">Side</th>
+                  <th className="p-3 font-mono">PSV (cm/s)</th>
+                  <th className="p-3 font-mono">EDV (cm/s)</th>
+                  <th className="p-3">Flow Direction</th>
+                  <th className="p-3">Waveform</th>
+                  <th className="p-3">Wall Findings</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/60 font-medium text-slate-300 print:text-black print:divide-gray-300">
+                {Object.keys(studyData.segments).map(id => {
+                  const s = studyData.segments[id];
+                  const meta = SEGMENTS_META[id];
+                  if (!meta) return null;
+                  if (id === 'arch') return null;
+                  if (id.startsWith('l_bct_') && !studyData.variantLeftBct) return null;
+
+                  const paths: string[] = [];
+                  if (s.stenosisPresent) paths.push('Stenosis');
+                  if (s.plaquePresent) paths.push('Plaque');
+                  if (s.intimalThickening) paths.push('Thickened IMT');
+
+                  return (
+                    <tr key={id} className="hover:bg-slate-800/30">
+                      <td className="p-3 font-semibold text-slate-100 print:text-black">{meta.name}</td>
+                      <td className="p-3 capitalize">{s.side}</td>
+                      <td className="p-3 font-mono font-bold">{s.psv !== null ? s.psv : '—'}</td>
+                      <td className="p-3 font-mono">{s.edv !== null ? s.edv : '—'}</td>
+                      <td className="p-3 uppercase text-[10px]">{s.flowDirection}</td>
+                      <td className="p-3 italic text-slate-400 print:text-black">{s.waveform}</td>
+                      <td className="p-3">
+                        {paths.length > 0 ? (
+                          <div className="flex gap-1 flex-wrap">
+                            {paths.map(p => (
+                              <span key={p} className="px-1.5 py-0.5 rounded text-[8.5px] font-bold bg-slate-800 text-slate-300 border border-slate-700 print:bg-gray-200 print:text-black">
+                                {p}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-slate-500 italic print:text-black">Normal</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Narrative Comments */}
+        <div className="p-6 border-t border-slate-800 bg-[#0f172a]/60 space-y-2 print:bg-white print:border-t print:border-black">
+          <label className="block text-[10px] font-bold text-slate-400 uppercase print:text-black">
             Sonographer & Physician Conclusions / Custom Notes
           </label>
           <textarea
@@ -645,12 +603,14 @@ export const ClinicalReport: React.FC<ClinicalReportProps> = ({
             placeholder="Type comprehensive conclusions, diagnostic recommendations, and technical caveats..."
             value={studyData.studyComments}
             onChange={(e) => onUpdateStudy({ studyComments: e.target.value })}
-            className="w-full h-24 bg-white border border-slate-200 rounded-xl p-3 text-xs focus:ring-2 focus:ring-cyan-500 focus:outline-none"
+            className="w-full h-24 bg-[#0b101f] border border-slate-800 rounded-xl p-3 text-xs text-slate-100 focus:border-cyan-500 focus:outline-none print:hidden"
           />
+          <div className="hidden print:block text-xs font-mono text-black whitespace-pre-wrap">
+            {studyData.studyComments || 'No additional comments.'}
+          </div>
         </div>
-      </div>
 
-      
+      </div>
     </div>
   );
 };

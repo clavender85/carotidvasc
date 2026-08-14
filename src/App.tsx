@@ -3,6 +3,8 @@ import { StudyData, SegmentData, PlaqueData } from './types';
 import { getInitialStudyData, SAMPLE_CASES, SEGMENTS_META } from './constants';
 import { suggestIcaStenosisCategory } from './utils/calculations';
 import { VesselTreeList } from './components/VesselTreeList';
+import { CarotidVesselMatrixView } from './components/CarotidVesselMatrixView';
+import { AbnormalCarotidFindingsPanel } from './components/AbnormalCarotidFindingsPanel';
 import { SegmentAssessment } from './components/SegmentAssessment';
 import { NascetCalculator } from './components/NascetCalculator';
 import { PlaqueRegister } from './components/PlaqueRegister';
@@ -11,7 +13,7 @@ import { AssociatedPathologyTab } from './components/AssociatedPathologyTab';
 import { CriteriaReferenceTab } from './components/CriteriaReferenceTab';
 import { ClinicalReport } from './components/ClinicalReport';
 import { CarotidDiagram } from './components/CarotidDiagram';
-import { Activity, FileText, Ruler, ClipboardList, Settings, Sparkles, Heart, RefreshCw, Layers, BookOpen, User, ShieldAlert } from 'lucide-react';
+import { Activity, FileText, Ruler, ClipboardList, Settings, Sparkles, Heart, RefreshCw, Layers, BookOpen, User, ShieldAlert, LayoutGrid } from 'lucide-react';
 
 export default function App() {
   const [studyData, setStudyData] = useState<StudyData>(getInitialStudyData());
@@ -20,6 +22,8 @@ export default function App() {
   
   // Top-level worksheet tabs inspired by DVT app structure
   const [activeTab, setActiveTab] = useState<'assessment' | 'nascet' | 'plaque' | 'demographics' | 'associated' | 'reference' | 'report'>('assessment');
+  // Sub-view toggle in assessment: diagram vs matrix
+  const [assessmentViewMode, setAssessmentViewMode] = useState<'diagram_tree' | 'matrix'>('diagram_tree');
 
   // Multi-select or single select handler
   const handleSelectSegment = (id: string, isMulti: boolean) => {
@@ -356,44 +360,108 @@ export default function App() {
       </nav>
 
       {/* Main Content Area */}
-      <div className="flex-1 p-6">
+      <div className="flex-1 p-6 space-y-6">
+        
+        {/* Persistent High-Level Clinical Findings & Steal Alert Banner */}
+        <AbnormalCarotidFindingsPanel
+          studyData={studyData}
+          onSelectSegment={handleSelectSegment}
+          onNavigateTab={(tab) => setActiveTab(tab as any)}
+        />
+
         {activeTab === 'assessment' && (
-          <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
-            <main className="xl:col-span-8 space-y-6">
-              {/* Anatomical Diagram View */}
-              <CarotidDiagram
-                studyData={studyData}
-                selectedSegmentIds={selectedSegmentIds}
-                activeSegmentId={activeSegmentId}
-                onSelectSegment={handleSelectSegment}
-                onAssessSegment={handleAssessSegment}
-                onToggleVariant={() => handleUpdateStudy({ variantLeftBct: !studyData.variantLeftBct })}
-              />
+          <div className="space-y-4">
+            {/* View Mode Switcher for Assessment */}
+            <div className="flex items-center justify-between bg-[#0f172a] border border-slate-800 p-2.5 rounded-xl">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  id="btn-view-diagram-tree"
+                  onClick={() => setAssessmentViewMode('diagram_tree')}
+                  className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    assessmentViewMode === 'diagram_tree'
+                      ? 'bg-cyan-600 text-slate-950 font-black shadow-md'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                  }`}
+                >
+                  <Layers className="w-3.5 h-3.5" />
+                  <span>Anatomical Map & Tree</span>
+                </button>
+                <button
+                  type="button"
+                  id="btn-view-matrix"
+                  onClick={() => setAssessmentViewMode('matrix')}
+                  className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    assessmentViewMode === 'matrix'
+                      ? 'bg-cyan-600 text-slate-950 font-black shadow-md'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                  }`}
+                >
+                  <LayoutGrid className="w-3.5 h-3.5" />
+                  <span>Bilateral Hemodynamic Matrix</span>
+                </button>
+              </div>
 
-              {/* DVT-Style Left/Right Vessel Tree Structured Panels */}
-              <VesselTreeList
-                studyData={studyData}
-                selectedSegmentIds={selectedSegmentIds}
-                activeSegmentId={activeSegmentId}
-                onSelectSegment={handleSelectSegment}
-                onAssessSegment={handleAssessSegment}
-                onQuickMarkNormal={handleQuickMarkNormal}
-                onMarkSideNormal={handleMarkSideNormal}
-              />
-            </main>
+              <div className="text-[11px] text-slate-400 hidden sm:block">
+                {selectedSegmentIds.length > 0
+                  ? `${selectedSegmentIds.length} segment(s) selected for documentation`
+                  : 'Click vessels to select and document velocities'}
+              </div>
+            </div>
 
-            <aside className="xl:col-span-4 sticky top-[136px] h-[calc(100vh-160px)] flex flex-col">
-              <SegmentAssessment
-                studyData={studyData}
-                selectedIds={selectedSegmentIds}
-                activeId={activeSegmentId}
-                onSetActiveSegment={handleSetActiveSegment}
-                onRemoveSelectedSegment={handleRemoveSelectedSegment}
-                onUpdateSegment={handleUpdateSegment}
-                onUpdateSegmentsBulk={handleUpdateSegmentsBulk}
-                onAddPlaqueFromSegments={handleAddPlaqueFromSegments}
-              />
-            </aside>
+            <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
+              <main className="xl:col-span-8 space-y-6">
+                {assessmentViewMode === 'diagram_tree' ? (
+                  <>
+                    {/* Anatomical Diagram View */}
+                    <CarotidDiagram
+                      studyData={studyData}
+                      selectedSegmentIds={selectedSegmentIds}
+                      activeSegmentId={activeSegmentId}
+                      onSelectSegment={handleSelectSegment}
+                      onAssessSegment={handleAssessSegment}
+                      onToggleVariant={() => handleUpdateStudy({ variantLeftBct: !studyData.variantLeftBct })}
+                    />
+
+                    {/* DVT-Style Left/Right Vessel Tree Structured Panels */}
+                    <VesselTreeList
+                      studyData={studyData}
+                      selectedSegmentIds={selectedSegmentIds}
+                      activeSegmentId={activeSegmentId}
+                      onSelectSegment={handleSelectSegment}
+                      onAssessSegment={handleAssessSegment}
+                      onQuickMarkNormal={handleQuickMarkNormal}
+                      onMarkSideNormal={handleMarkSideNormal}
+                    />
+                  </>
+                ) : (
+                  /* Bilateral Matrix Quick Entry View */
+                  <CarotidVesselMatrixView
+                    studyData={studyData}
+                    activeSegmentId={activeSegmentId}
+                    selectedSegmentIds={selectedSegmentIds}
+                    onSelectSegment={handleSelectSegment}
+                    onAssessSegment={handleAssessSegment}
+                    onUpdateSegment={handleUpdateSegment}
+                    onQuickMarkNormal={handleQuickMarkNormal}
+                    onMarkSideNormal={handleMarkSideNormal}
+                  />
+                )}
+              </main>
+
+              <aside className="xl:col-span-4 sticky top-[136px] h-[calc(100vh-160px)] flex flex-col">
+                <SegmentAssessment
+                  studyData={studyData}
+                  selectedIds={selectedSegmentIds}
+                  activeId={activeSegmentId}
+                  onSetActiveSegment={handleSetActiveSegment}
+                  onRemoveSelectedSegment={handleRemoveSelectedSegment}
+                  onUpdateSegment={handleUpdateSegment}
+                  onUpdateSegmentsBulk={handleUpdateSegmentsBulk}
+                  onAddPlaqueFromSegments={handleAddPlaqueFromSegments}
+                />
+              </aside>
+            </div>
           </div>
         )}
 

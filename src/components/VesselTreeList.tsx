@@ -72,26 +72,30 @@ export const VesselTreeList: React.FC<VesselTreeListProps> = ({
     const isStenotic = s.stenosisPresent;
     const isPlaque = s.plaquePresent;
 
-    let bgClass = 'bg-white hover:bg-slate-50';
-    let borderClass = 'border-slate-200';
+    let bgClass = 'bg-[#0f172a] hover:bg-[#152038]';
+    let borderClass = 'border-slate-800';
 
     if (isActive) {
-      bgClass = 'bg-cyan-50/80';
-      borderClass = 'border-cyan-500 ring-1 ring-cyan-500';
+      bgClass = 'bg-cyan-950/50';
+      borderClass = 'border-cyan-400 ring-1 ring-cyan-400';
     } else if (isSelected) {
-      bgClass = 'bg-cyan-50/40';
-      borderClass = 'border-cyan-300';
+      bgClass = 'bg-cyan-950/30';
+      borderClass = 'border-cyan-600';
+    } else if (s.flowDirection === 'absent' || s.flowDirection === 'retrograde') {
+      bgClass = 'bg-rose-950/30';
+      borderClass = 'border-rose-700';
     } else if (isStenotic) {
-      bgClass = 'bg-rose-50/50';
-      borderClass = 'border-rose-300';
+      bgClass = 'bg-rose-950/20';
+      borderClass = 'border-rose-800';
     } else if (isPlaque) {
-      bgClass = 'bg-amber-50/50';
-      borderClass = 'border-amber-300';
+      bgClass = 'bg-amber-950/20';
+      borderClass = 'border-amber-800';
     }
 
     return (
       <div
         key={id}
+        id={`vessel-tree-item-${id}`}
         onClick={(e) => {
           const isMulti = e.ctrlKey || e.metaKey || e.shiftKey;
           onSelectSegment(id, isMulti);
@@ -101,36 +105,46 @@ export const VesselTreeList: React.FC<VesselTreeListProps> = ({
       >
         <div className="flex items-center gap-2">
           <div className="flex flex-col">
-            <span className="text-xs font-bold text-slate-800">{meta.shortName}</span>
-            <span className="text-[9px] text-slate-400 font-medium truncate max-w-[110px]">{meta.name}</span>
+            <span className={`text-xs font-bold ${isActive ? 'text-cyan-300' : 'text-slate-100'}`}>{meta.shortName}</span>
+            <span className="text-[9px] text-slate-400 font-medium truncate max-w-[120px]">{meta.name}</span>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
           {/* Flow Direction Indicator */}
-          <div className="w-5 h-5 rounded-full bg-slate-100 flex items-center justify-center border border-slate-200">
+          <div className="w-5 h-5 rounded-full bg-[#0b101f] flex items-center justify-center border border-slate-700">
             {renderFlowIcon(s.flowDirection)}
           </div>
 
           {/* PSV / EDV values */}
           <div className="text-right font-mono text-[11px]">
-            <span className={`font-bold ${isStenotic ? 'text-rose-600' : 'text-slate-800'}`}>
+            <span className={`font-black ${
+              s.flowDirection === 'absent' ? 'text-rose-500 line-through' :
+              isStenotic || (s.psv && s.psv >= 230) ? 'text-rose-400 font-extrabold' :
+              s.psv && s.psv >= 125 ? 'text-amber-400 font-extrabold' :
+              hasPsv ? 'text-emerald-400 font-bold' : 'text-slate-500'
+            }`}>
               {s.psv !== null ? s.psv : '—'}
             </span>
             <span className="text-[9px] text-slate-400 block">
-              {s.edv !== null ? s.edv : '—'} cm/s
+              {s.edv !== null ? `E:${s.edv}` : 'E:—'} cm/s
             </span>
           </div>
 
           {/* Status Badges */}
           {isStenotic && (
-            <span className="px-1.5 py-0.5 rounded text-[8px] font-black bg-rose-100 text-rose-800 border border-rose-300">
+            <span className="px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase bg-rose-950 text-rose-300 border border-rose-800">
               STEN
             </span>
           )}
           {isPlaque && !isStenotic && (
-            <span className="px-1.5 py-0.5 rounded text-[8px] font-black bg-amber-100 text-amber-800 border border-amber-300">
+            <span className="px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase bg-amber-950 text-amber-300 border border-amber-800">
               PLQ
+            </span>
+          )}
+          {s.intimalThickening && !isPlaque && !isStenotic && (
+            <span className="px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase bg-cyan-950 text-cyan-300 border border-cyan-800">
+              IMT
             </span>
           )}
         </div>
@@ -142,25 +156,25 @@ export const VesselTreeList: React.FC<VesselTreeListProps> = ({
     <div id="vessel-tree-grid" className="grid grid-cols-1 lg:grid-cols-2 gap-6">
       
       {/* RIGHT CAROTID SYSTEM */}
-      <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4 space-y-3">
-        <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+      <div className="bg-[#0b1329] border border-slate-800 rounded-xl shadow-md p-4 space-y-3">
+        <div className="flex items-center justify-between border-b border-slate-800 pb-2">
           <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-cyan-600"></span>
-            <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Right Carotid & Vertebral System</h3>
+            <span className="w-2.5 h-2.5 rounded-full bg-cyan-400"></span>
+            <h3 className="text-xs font-black text-slate-100 uppercase tracking-wider">Right Carotid & Vertebral System</h3>
           </div>
           <button
             type="button"
             id="btn-mark-right-normal"
             onClick={() => onMarkSideNormal('right')}
-            className="text-[10px] text-cyan-700 hover:text-cyan-900 font-bold px-2 py-1 bg-cyan-50 rounded hover:bg-cyan-100 transition-all"
+            className="text-[10px] text-cyan-300 hover:text-white font-bold px-2.5 py-1 bg-cyan-950/60 hover:bg-cyan-900 border border-cyan-800 rounded-lg transition-all cursor-pointer"
           >
             Mark Right Normal
           </button>
         </div>
 
         {isRightSteal && (
-          <div className="p-2 bg-amber-50 border border-amber-300 rounded-lg flex items-center gap-2 text-amber-800 text-[11px]">
-            <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600" />
+          <div className="p-2 bg-rose-950/50 border border-rose-800 rounded-lg flex items-center gap-2 text-rose-300 text-[11px]">
+            <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400 animate-pulse" />
             <span>Subclavian / Vertebral Steal physiology suspected on Right side.</span>
           </div>
         )}
@@ -171,25 +185,25 @@ export const VesselTreeList: React.FC<VesselTreeListProps> = ({
       </div>
 
       {/* LEFT CAROTID SYSTEM */}
-      <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4 space-y-3">
-        <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+      <div className="bg-[#0b1329] border border-slate-800 rounded-xl shadow-md p-4 space-y-3">
+        <div className="flex items-center justify-between border-b border-slate-800 pb-2">
           <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-indigo-600"></span>
-            <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Left Carotid & Vertebral System</h3>
+            <span className="w-2.5 h-2.5 rounded-full bg-cyan-400"></span>
+            <h3 className="text-xs font-black text-slate-100 uppercase tracking-wider">Left Carotid & Vertebral System</h3>
           </div>
           <button
             type="button"
             id="btn-mark-left-normal"
             onClick={() => onMarkSideNormal('left')}
-            className="text-[10px] text-indigo-700 hover:text-indigo-900 font-bold px-2 py-1 bg-indigo-50 rounded hover:bg-indigo-100 transition-all"
+            className="text-[10px] text-cyan-300 hover:text-white font-bold px-2.5 py-1 bg-cyan-950/60 hover:bg-cyan-900 border border-cyan-800 rounded-lg transition-all cursor-pointer"
           >
             Mark Left Normal
           </button>
         </div>
 
         {isLeftSteal && (
-          <div className="p-2 bg-amber-50 border border-amber-300 rounded-lg flex items-center gap-2 text-amber-800 text-[11px]">
-            <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600" />
+          <div className="p-2 bg-rose-950/50 border border-rose-800 rounded-lg flex items-center gap-2 text-rose-300 text-[11px]">
+            <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400 animate-pulse" />
             <span>Retrograde vertebral flow / Subclavian steal suspected on Left side.</span>
           </div>
         )}

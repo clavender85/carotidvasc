@@ -44,17 +44,6 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
   const [atStenosisPsv, setAtStenosisPsv] = useState<string>('');
   const [postStenosisPsv, setPostStenosisPsv] = useState<string>('');
 
-  // Bidirectional mirroring
-  const handleAtStenosisChange = (val: string) => {
-    setAtStenosisPsv(val);
-    setPsv(val);
-  };
-
-  const handleMainPsvChange = (val: string) => {
-    setPsv(val);
-    setAtStenosisPsv(val);
-  };
-
   // Bulk mode checkbox overrides
   const [applyPsv, setApplyPsv] = useState(false);
   const [applyEdv, setApplyEdv] = useState(false);
@@ -91,13 +80,13 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
 
   if (selectedIds.length === 0) {
     return (
-      <div id="no-segment-selected" className="bg-white border border-slate-200 rounded-xl p-8 text-center flex flex-col items-center justify-center h-full min-h-[400px]">
-        <div className="w-12 h-12 rounded-full bg-slate-50 flex items-center justify-center border border-slate-200 mb-4 text-slate-400">
+      <div id="no-segment-selected" className="bg-[#0b1329] border border-slate-800 rounded-xl p-8 text-center flex flex-col items-center justify-center h-full min-h-[380px]">
+        <div className="w-12 h-12 rounded-full bg-[#0f172a] flex items-center justify-center border border-slate-800 mb-4 text-slate-500">
           <ClipboardList className="w-6 h-6" />
         </div>
-        <h3 className="text-sm font-bold text-slate-800">No segment selected</h3>
+        <h3 className="text-xs font-black text-slate-200 uppercase tracking-wider">No Segment Selected</h3>
         <p className="text-xs text-slate-500 max-w-[280px] mt-1.5 leading-relaxed">
-          Select one or multiple segments on the anatomical tree canvas to begin clinical assessment.
+          Select one or multiple segments on the diagram or bilateral matrix to view and record segment parameters.
         </p>
       </div>
     );
@@ -217,36 +206,36 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
   ) : [];
 
   return (
-    <div id="segment-assessment-container" className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden flex flex-col h-full">
+    <div id="segment-assessment-container" className="bg-[#0b1329] border border-slate-800 rounded-xl shadow-lg overflow-hidden flex flex-col h-full">
       {/* Panel Header */}
-      <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+      <div className="p-4 bg-[#0f172a] border-b border-slate-800 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Sliders className="w-4 h-4 text-blue-500" />
-          <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+          <Sliders className="w-4 h-4 text-cyan-400" />
+          <h3 className="text-xs font-black text-slate-100 uppercase tracking-wider">
             {isBulk ? `Bulk Assessment (${selectedIds.length} Segments)` : `Detailed Segment Assessment`}
           </h3>
         </div>
         <button
           id="assessment-normal-btn"
           onClick={handleMarkNormal}
-          className="px-2 py-1 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 rounded text-[10px] font-bold transition-colors"
+          className="px-2.5 py-1 bg-emerald-950/70 text-emerald-300 hover:bg-emerald-900 border border-emerald-700 rounded-lg text-[10px] font-extrabold uppercase transition-colors cursor-pointer"
         >
           Quick Set Normal
         </button>
       </div>
 
       {/* Selected segments list display with active switching and remove chips */}
-      <div className="px-4 py-2.5 bg-[#0f172a] border-b border-slate-800 flex flex-col gap-2">
+      <div className="px-4 py-2.5 bg-[#080d19] border-b border-slate-800 flex flex-col gap-2">
         <div className="flex items-center justify-between">
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-            Selected Segments ({selectedIds.length}):
+            Active Segment Targets ({selectedIds.length}):
           </span>
           {selectedIds.length > 1 && (
             <button
               type="button"
               id="classify-continuous-plaque-btn"
               onClick={() => onAddPlaqueFromSegments(selectedIds)}
-              className="text-[10px] font-bold bg-amber-950/40 text-amber-300 hover:bg-amber-900/50 border border-amber-800 px-2 py-0.5 rounded transition-colors cursor-pointer"
+              className="text-[10px] font-bold bg-amber-950/60 text-amber-300 hover:bg-amber-900 border border-amber-800 px-2 py-0.5 rounded transition-colors cursor-pointer"
               title="Register single continuous plaque spanning all selected segments"
             >
               Classify Continuous Plaque ({selectedIds.length})
@@ -264,8 +253,8 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
                 onClick={() => onSetActiveSegment(id)}
                 className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1 rounded-md cursor-pointer transition-all ${
                   isActive
-                    ? 'bg-cyan-500 text-slate-950 shadow-sm border border-cyan-400 font-extrabold'
-                    : 'bg-[#1e293b] hover:bg-[#2c3e50] text-slate-200 border border-slate-700'
+                    ? 'bg-cyan-500 text-slate-950 shadow-sm border border-cyan-400 font-black'
+                    : 'bg-[#152038] hover:bg-[#1e2d4d] text-slate-300 border border-slate-700'
                 }`}
                 title="Click to make active for individual editing"
               >
@@ -276,7 +265,7 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
                     e.stopPropagation();
                     onRemoveSelectedSegment(id);
                   }}
-                  className="w-3.5 h-3.5 rounded-full hover:bg-black/20 flex items-center justify-center text-current"
+                  className="w-3.5 h-3.5 rounded-full hover:bg-black/20 flex items-center justify-center text-current font-bold"
                   title="Remove from selection"
                 >
                   ×
@@ -292,44 +281,44 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
 
         {/* If bulk mode, display field apply selectors */}
         {isBulk && (
-          <div className="bg-indigo-50/40 border border-dashed border-indigo-100 p-3 rounded-lg space-y-2 mb-2">
-            <span className="text-[10px] font-bold text-indigo-700 uppercase flex items-center gap-1">
+          <div className="bg-[#0f172a] border border-dashed border-cyan-900/60 p-3.5 rounded-xl space-y-2 mb-2">
+            <span className="text-[10px] font-bold text-cyan-400 uppercase flex items-center gap-1">
               <Info className="w-3.5 h-3.5" /> Bulk Update Rules
             </span>
-            <p className="text-[10px] text-slate-500 leading-normal">
+            <p className="text-[10px] text-slate-400 leading-normal">
               Select which properties to apply to all selected segments:
             </p>
             <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 pt-1">
-              <label className="flex items-center gap-1.5 text-[10px] font-medium text-slate-700">
-                <input type="checkbox" checked={applyPsv} onChange={(e) => setApplyPsv(e.target.checked)} className="rounded text-indigo-600 focus:ring-indigo-500" />
+              <label className="flex items-center gap-1.5 text-[10px] font-medium text-slate-300">
+                <input type="checkbox" checked={applyPsv} onChange={(e) => setApplyPsv(e.target.checked)} className="rounded text-cyan-500" />
                 Apply PSV
               </label>
-              <label className="flex items-center gap-1.5 text-[10px] font-medium text-slate-700">
-                <input type="checkbox" checked={applyEdv} onChange={(e) => setApplyEdv(e.target.checked)} className="rounded text-indigo-600 focus:ring-indigo-500" />
+              <label className="flex items-center gap-1.5 text-[10px] font-medium text-slate-300">
+                <input type="checkbox" checked={applyEdv} onChange={(e) => setApplyEdv(e.target.checked)} className="rounded text-cyan-500" />
                 Apply EDV
               </label>
-              <label className="flex items-center gap-1.5 text-[10px] font-medium text-slate-700">
-                <input type="checkbox" checked={applyFlow} onChange={(e) => setApplyFlow(e.target.checked)} className="rounded text-indigo-600 focus:ring-indigo-500" />
+              <label className="flex items-center gap-1.5 text-[10px] font-medium text-slate-300">
+                <input type="checkbox" checked={applyFlow} onChange={(e) => setApplyFlow(e.target.checked)} className="rounded text-cyan-500" />
                 Apply Flow Direction
               </label>
-              <label className="flex items-center gap-1.5 text-[10px] font-medium text-slate-700">
-                <input type="checkbox" checked={applyWave} onChange={(e) => setApplyWave(e.target.checked)} className="rounded text-indigo-600 focus:ring-indigo-500" />
+              <label className="flex items-center gap-1.5 text-[10px] font-medium text-slate-300">
+                <input type="checkbox" checked={applyWave} onChange={(e) => setApplyWave(e.target.checked)} className="rounded text-cyan-500" />
                 Apply Waveform
               </label>
-              <label className="flex items-center gap-1.5 text-[10px] font-medium text-slate-700">
-                <input type="checkbox" checked={applyPlaque} onChange={(e) => setApplyPlaque(e.target.checked)} className="rounded text-indigo-600 focus:ring-indigo-500" />
+              <label className="flex items-center gap-1.5 text-[10px] font-medium text-slate-300">
+                <input type="checkbox" checked={applyPlaque} onChange={(e) => setApplyPlaque(e.target.checked)} className="rounded text-cyan-500" />
                 Apply Plaque Flag
               </label>
-              <label className="flex items-center gap-1.5 text-[10px] font-medium text-slate-700">
-                <input type="checkbox" checked={applyImt} onChange={(e) => setApplyImt(e.target.checked)} className="rounded text-indigo-600 focus:ring-indigo-500" />
+              <label className="flex items-center gap-1.5 text-[10px] font-medium text-slate-300">
+                <input type="checkbox" checked={applyImt} onChange={(e) => setApplyImt(e.target.checked)} className="rounded text-cyan-500" />
                 Apply IMT Flag
               </label>
-              <label className="flex items-center gap-1.5 text-[10px] font-medium text-slate-700">
-                <input type="checkbox" checked={applyStenosis} onChange={(e) => setApplyStenosis(e.target.checked)} className="rounded text-indigo-600 focus:ring-indigo-500" />
+              <label className="flex items-center gap-1.5 text-[10px] font-medium text-slate-300">
+                <input type="checkbox" checked={applyStenosis} onChange={(e) => setApplyStenosis(e.target.checked)} className="rounded text-cyan-500" />
                 Apply Stenosis Flag
               </label>
-              <label className="flex items-center gap-1.5 text-[10px] font-medium text-slate-700">
-                <input type="checkbox" checked={applyComments} onChange={(e) => setApplyComments(e.target.checked)} className="rounded text-indigo-600 focus:ring-indigo-500" />
+              <label className="flex items-center gap-1.5 text-[10px] font-medium text-slate-300">
+                <input type="checkbox" checked={applyComments} onChange={(e) => setApplyComments(e.target.checked)} className="rounded text-cyan-500" />
                 Apply Comments & Limits
               </label>
             </div>
@@ -339,8 +328,8 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
         {/* 1. Velocities (PSV / EDV) */}
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className={`block text-[11px] font-semibold mb-1 ${isBulk && !applyPsv ? 'text-slate-400 line-through' : 'text-slate-700'}`}>
-              Peak Systolic (PSV) <span className="text-[9px] text-slate-400 font-normal">(cm/s)</span>
+            <label className={`block text-[11px] font-bold uppercase mb-1 ${isBulk && !applyPsv ? 'text-slate-500 line-through' : 'text-slate-300'}`}>
+              Peak Systolic (PSV) <span className="text-[9px] text-slate-500 font-normal">(cm/s)</span>
             </label>
             <input
               id="input-psv"
@@ -349,12 +338,12 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
               value={psv}
               onChange={(e) => setPsv(e.target.value)}
               disabled={isBulk && !applyPsv}
-              className="w-full px-3 py-1.5 rounded-md border border-slate-200 text-xs font-mono focus:border-blue-500 focus:ring-1 focus:ring-blue-100 disabled:bg-slate-50 disabled:text-slate-400"
+              className="w-full px-3 py-2 rounded-lg bg-[#0f172a] border border-slate-700 text-xs font-mono text-slate-100 focus:border-cyan-500 focus:outline-none disabled:opacity-40"
             />
           </div>
           <div>
-            <label className={`block text-[11px] font-semibold mb-1 ${isBulk && !applyEdv ? 'text-slate-400 line-through' : 'text-slate-700'}`}>
-              End Diastolic (EDV) <span className="text-[9px] text-slate-400 font-normal">(cm/s)</span>
+            <label className={`block text-[11px] font-bold uppercase mb-1 ${isBulk && !applyEdv ? 'text-slate-500 line-through' : 'text-slate-300'}`}>
+              End Diastolic (EDV) <span className="text-[9px] text-slate-500 font-normal">(cm/s)</span>
             </label>
             <input
               id="input-edv"
@@ -363,14 +352,14 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
               value={edv}
               onChange={(e) => setEdv(e.target.value)}
               disabled={isBulk && !applyEdv}
-              className="w-full px-3 py-1.5 rounded-md border border-slate-200 text-xs font-mono focus:border-blue-500 focus:ring-1 focus:ring-blue-100 disabled:bg-slate-50 disabled:text-slate-400"
+              className="w-full px-3 py-2 rounded-lg bg-[#0f172a] border border-slate-700 text-xs font-mono text-slate-100 focus:border-cyan-500 focus:outline-none disabled:opacity-40"
             />
           </div>
         </div>
 
         {/* 2. Flow Direction */}
-        <div className={isBulk && !applyFlow ? 'opacity-50 pointer-events-none' : ''}>
-          <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+        <div className={isBulk && !applyFlow ? 'opacity-40 pointer-events-none' : ''}>
+          <label className="block text-[11px] font-bold uppercase text-slate-300 mb-1">
             Flow Direction
           </label>
           <div className="grid grid-cols-3 gap-1.5">
@@ -380,14 +369,14 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
                 type="button"
                 id={`flow-btn-${dir}`}
                 onClick={() => setFlowDirection(dir)}
-                className={`py-1 px-1.5 rounded border text-[10px] font-bold text-center capitalize transition-all ${
+                className={`py-1.5 px-2 rounded-lg border text-[10px] font-black uppercase text-center transition-all cursor-pointer ${
                   flowDirection === dir
                     ? dir === 'antegrade'
-                      ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                      ? 'bg-emerald-950/80 border-emerald-600 text-emerald-300 shadow-sm'
                       : dir === 'retrograde'
-                      ? 'bg-red-50 border-red-300 text-red-800'
-                      : 'bg-amber-50 border-amber-300 text-amber-800'
-                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                      ? 'bg-rose-950/80 border-rose-600 text-rose-300 shadow-sm'
+                      : 'bg-amber-950/80 border-amber-600 text-amber-300 shadow-sm'
+                    : 'bg-[#0f172a] border-slate-700 text-slate-400 hover:bg-slate-800'
                 }`}
               >
                 {dir}
@@ -399,10 +388,10 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
                 type="button"
                 id={`flow-btn-${dir}`}
                 onClick={() => setFlowDirection(dir)}
-                className={`col-span-1 py-1 px-1.5 rounded border text-[10px] font-bold text-center capitalize transition-all ${
+                className={`col-span-1 py-1.5 px-2 rounded-lg border text-[10px] font-black uppercase text-center transition-all cursor-pointer ${
                   flowDirection === dir
-                    ? 'bg-slate-100 border-slate-300 text-slate-800'
-                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                    ? 'bg-slate-800 border-slate-600 text-slate-100 shadow-sm'
+                    : 'bg-[#0f172a] border-slate-700 text-slate-400 hover:bg-slate-800'
                 }`}
               >
                 {dir === 'not_assessed' ? 'Unassessed' : dir}
@@ -412,8 +401,8 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
         </div>
 
         {/* 3. Waveform Presets */}
-        <div className={isBulk && !applyWave ? 'opacity-50 pointer-events-none' : ''}>
-          <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+        <div className={isBulk && !applyWave ? 'opacity-40 pointer-events-none' : ''}>
+          <label className="block text-[11px] font-bold uppercase text-slate-300 mb-1">
             Waveform Characteristics
           </label>
           <div className="flex flex-wrap gap-1.5 mb-2">
@@ -423,10 +412,10 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
                 type="button"
                 id={`waveform-preset-${w.replace(/\s+/g, '-').toLowerCase()}`}
                 onClick={() => setWaveform(w)}
-                className={`px-2 py-1 rounded text-[9px] font-medium transition-all ${
+                className={`px-2 py-1 rounded text-[9.5px] font-bold transition-all border cursor-pointer ${
                   waveform === w
-                    ? 'bg-blue-50 border border-blue-300 text-blue-800'
-                    : 'bg-slate-50 border border-slate-200 text-slate-600 hover:bg-slate-100'
+                    ? 'bg-cyan-950/70 border-cyan-500 text-cyan-200'
+                    : 'bg-[#0f172a] border-slate-800 text-slate-400 hover:bg-slate-800'
                 }`}
               >
                 {w}
@@ -439,24 +428,24 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
             placeholder="Type custom waveform profile..."
             value={waveform}
             onChange={(e) => setWaveform(e.target.value)}
-            className="w-full px-3 py-1.5 rounded-md border border-slate-200 text-xs focus:border-blue-500 focus:ring-1 focus:ring-blue-100"
+            className="w-full px-3 py-1.5 rounded-lg bg-[#0f172a] border border-slate-700 text-xs text-slate-100 focus:border-cyan-500 focus:outline-none"
           />
         </div>
 
         {/* 4. Pathology Binary Flags */}
-        <div className="space-y-2 pt-1 border-t border-slate-100">
+        <div className="space-y-2 pt-1 border-t border-slate-800">
           <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Arterial Wall Assessment</span>
           
           <div className="grid grid-cols-3 gap-2">
             {/* Plaque checkbox */}
             <label
               id="label-plaque-present"
-              className={`flex flex-col items-center p-2 rounded-lg border text-center transition-all cursor-pointer ${
+              className={`flex flex-col items-center p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
                 isBulk && !applyPlaque ? 'opacity-40' : ''
               } ${
                 plaquePresent
-                  ? 'border-amber-400 bg-amber-50/20 text-amber-900'
-                  : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-600'
+                  ? 'border-amber-500 bg-amber-950/50 text-amber-300 shadow-md'
+                  : 'border-slate-800 bg-[#0f172a] hover:bg-slate-800 text-slate-400'
               }`}
             >
               <input
@@ -466,19 +455,19 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
                 onChange={(e) => setPlaquePresent(e.target.checked)}
                 className="sr-only"
               />
-              <span className="text-[10px] font-bold">Plaque Present</span>
-              <span className="text-[8px] text-slate-400 mt-0.5">Visible focal lesion</span>
+              <span className="text-[10.5px] font-black">Plaque Present</span>
+              <span className="text-[8.5px] text-slate-500 mt-0.5">Visible focal lesion</span>
             </label>
 
             {/* Intimal Thickening checkbox */}
             <label
               id="label-imt-increased"
-              className={`flex flex-col items-center p-2 rounded-lg border text-center transition-all cursor-pointer ${
+              className={`flex flex-col items-center p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
                 isBulk && !applyImt ? 'opacity-40' : ''
               } ${
                 intimalThickening
-                  ? 'border-blue-400 bg-blue-50/20 text-blue-900'
-                  : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-600'
+                  ? 'border-cyan-500 bg-cyan-950/50 text-cyan-300 shadow-md'
+                  : 'border-slate-800 bg-[#0f172a] hover:bg-slate-800 text-slate-400'
               }`}
             >
               <input
@@ -488,19 +477,19 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
                 onChange={(e) => setIntimalThickening(e.target.checked)}
                 className="sr-only"
               />
-              <span className="text-[10px] font-bold">Thickened IMT</span>
-              <span className="text-[8px] text-slate-400 mt-0.5">Diffuse thickening</span>
+              <span className="text-[10.5px] font-black">Thickened IMT</span>
+              <span className="text-[8.5px] text-slate-500 mt-0.5">Diffuse thickening</span>
             </label>
 
             {/* Stenosis Present checkbox */}
             <label
               id="label-stenosis-present"
-              className={`flex flex-col items-center p-2 rounded-lg border text-center transition-all cursor-pointer ${
+              className={`flex flex-col items-center p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
                 isBulk && !applyStenosis ? 'opacity-40' : ''
               } ${
                 stenosisPresent
-                  ? 'border-red-400 bg-red-50/20 text-red-900'
-                  : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-600'
+                  ? 'border-rose-500 bg-rose-950/50 text-rose-300 shadow-md'
+                  : 'border-slate-800 bg-[#0f172a] hover:bg-slate-800 text-slate-400'
               }`}
             >
               <input
@@ -510,20 +499,20 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
                 onChange={(e) => setStenosisPresent(e.target.checked)}
                 className="sr-only"
               />
-              <span className="text-[10px] font-bold">Stenosis Present</span>
-              <span className="text-[8px] text-slate-400 mt-0.5">Hemodynamic lesion</span>
+              <span className="text-[10.5px] font-black">Stenosis Present</span>
+              <span className="text-[8.5px] text-slate-500 mt-0.5">Hemodynamic lesion</span>
             </label>
           </div>
         </div>
 
         {/* 5. Plaque Creation Shortcut */}
         {plaquePresent && (
-          <div className="bg-amber-50/60 border border-amber-200 p-3 rounded-lg flex flex-col gap-2">
+          <div className="bg-amber-950/30 border border-amber-800/80 p-3 rounded-xl flex flex-col gap-2">
             <div className="flex items-start gap-2">
-              <ClipboardList className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <ClipboardList className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
               <div>
-                <span className="text-[10px] font-bold text-amber-800 block">Plaque Registry Integration</span>
-                <span className="text-[9px] text-slate-500 leading-normal">
+                <span className="text-[10px] font-black text-amber-300 uppercase block">Plaque Registry Integration</span>
+                <span className="text-[9.5px] text-slate-400 leading-normal">
                   Plaque is marked present on {isBulk ? 'these segments' : 'this segment'}. Click below to configure composition, surface, and thickness in the plaque register.
                 </span>
               </div>
@@ -532,60 +521,60 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
               id="register-plaque-btn"
               type="button"
               onClick={() => onAddPlaqueFromSegments(selectedIds)}
-              className="w-full text-center py-1.5 rounded bg-amber-500 hover:bg-amber-600 text-white font-bold text-[10px] transition-all"
+              className="w-full text-center py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs transition-all cursor-pointer shadow-md"
             >
-              Attach Plaque Profile & Log measurements
+              Attach Plaque Profile & Log Measurements
             </button>
           </div>
         )}
 
         {/* 6. Smart Local Ratio Calculation Panel (Visible only in single assessment mode) */}
         {!isBulk && (
-          <div className="bg-slate-50 border border-slate-200 p-3.5 rounded-lg space-y-2.5">
-            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Local PSV Ratio (Diagnostic)</span>
+          <div className="bg-[#0f172a] border border-slate-800 p-3.5 rounded-xl space-y-2.5 shadow-md">
+            <span className="text-[10px] font-black text-cyan-400 uppercase tracking-wider block">Local PSV Ratio (Diagnostic)</span>
             
             {localRatioData ? (
               <div className="space-y-2">
-                <div className="grid grid-cols-2 gap-2 bg-white border border-slate-100 p-2 rounded-md">
+                <div className="grid grid-cols-2 gap-2 bg-[#0b101f] border border-slate-800 p-2.5 rounded-lg">
                   <div>
-                    <span className="text-[8px] font-bold text-slate-400 block uppercase">Reference Site</span>
-                    <span className="text-[10px] font-semibold text-slate-700 truncate block">
+                    <span className="text-[8px] font-bold text-slate-500 block uppercase">Reference Site</span>
+                    <span className="text-[10px] font-bold text-slate-200 truncate block">
                       {localRatioData.referenceName}
                     </span>
-                    <span className="text-[10px] font-mono text-slate-500">{localRatioData.referencePsv} cm/s</span>
+                    <span className="text-[10px] font-mono text-cyan-400">{localRatioData.referencePsv} cm/s</span>
                   </div>
                   <div>
-                    <span className="text-[8px] font-bold text-slate-400 block uppercase">Stenosis Site</span>
-                    <span className="text-[10px] font-semibold text-slate-700 truncate block">
-                      {SEGMENTS_META[activeId]?.shortName}
+                    <span className="text-[8px] font-bold text-slate-500 block uppercase">Stenosis Site</span>
+                    <span className="text-[10px] font-bold text-slate-200 truncate block">
+                      {SEGMENTS_META[currentId]?.shortName}
                     </span>
-                    <span className="text-[10px] font-mono text-slate-500">{psv || '0'} cm/s</span>
+                    <span className="text-[10px] font-mono text-cyan-400">{psv || '0'} cm/s</span>
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between border-t border-slate-200/60 pt-2 text-[11px]">
-                  <span className="font-semibold text-slate-600">Calculated Ratio:</span>
-                  <span className="font-mono text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                <div className="flex items-center justify-between border-t border-slate-800 pt-2 text-[11px]">
+                  <span className="font-bold text-slate-300">Calculated Ratio:</span>
+                  <span className="font-mono text-xs font-black text-cyan-300 bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-800">
                     {localRatioData.ratio}
                   </span>
                 </div>
               </div>
             ) : (
-              <p className="text-[10px] text-slate-400 italic">
+              <p className="text-[10px] text-slate-500 italic">
                 {psv ? 'Add a PSV to a normal upstream segment (or override below) to compute local PSV ratio.' : 'Register a segment PSV and an upstream reference to view ratios.'}
               </p>
             )}
 
             {/* Reference Override Selector */}
-            <div className="pt-1.5 border-t border-slate-200/40">
-              <label className="block text-[9px] text-slate-500 font-bold uppercase mb-1">
+            <div className="pt-1.5 border-t border-slate-800">
+              <label className="block text-[9px] text-slate-400 font-bold uppercase mb-1">
                 Reference Segment Override
               </label>
               <select
                 id="select-ratio-reference-override"
                 value={refOverrideId}
                 onChange={(e) => setRefOverrideId(e.target.value)}
-                className="w-full bg-white px-2 py-1 rounded border border-slate-200 text-[10px] focus:outline-none focus:ring-1 focus:ring-blue-100"
+                className="w-full bg-[#0b101f] px-2.5 py-1.5 rounded-lg border border-slate-700 text-xs text-slate-200 focus:outline-none"
               >
                 <option value="auto">
                   {autoUpstreamRef ? `Auto-Resolved (${autoUpstreamRef.name})` : 'Auto-Resolve Upstream Healthy'}
@@ -596,17 +585,14 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
                   </option>
                 ))}
               </select>
-              <span className="text-[8px] text-slate-400 block mt-0.5 leading-normal">
-                Standard clinical protocol automatically walks back towards the heart to identify the nearest normal segment.
-              </span>
             </div>
           </div>
         )}
 
         {/* 7. Comments and Technical Limitations */}
-        <div className="grid grid-cols-2 gap-3 pt-1 border-t border-slate-100">
-          <div className={isBulk && !applyComments ? 'opacity-50 pointer-events-none' : ''}>
-            <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+        <div className="grid grid-cols-2 gap-3 pt-1 border-t border-slate-800">
+          <div className={isBulk && !applyComments ? 'opacity-40 pointer-events-none' : ''}>
+            <label className="block text-[11px] font-bold uppercase text-slate-300 mb-1">
               Comments
             </label>
             <textarea
@@ -615,11 +601,11 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
               value={comments}
               onChange={(e) => setComments(e.target.value)}
               disabled={isBulk && !applyComments}
-              className="w-full h-16 px-2 py-1.5 rounded-md border border-slate-200 text-xs focus:border-blue-500 focus:ring-1 focus:ring-blue-100 resize-none"
+              className="w-full h-16 px-3 py-2 rounded-lg bg-[#0f172a] border border-slate-700 text-xs text-slate-100 focus:border-cyan-500 focus:outline-none resize-none"
             />
           </div>
-          <div className={isBulk && !applyComments ? 'opacity-50 pointer-events-none' : ''}>
-            <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+          <div className={isBulk && !applyComments ? 'opacity-40 pointer-events-none' : ''}>
+            <label className="block text-[11px] font-bold uppercase text-slate-300 mb-1">
               Technical Limits
             </label>
             <textarea
@@ -628,7 +614,7 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
               value={techLimits}
               onChange={(e) => setTechLimits(e.target.value)}
               disabled={isBulk && !applyComments}
-              className="w-full h-16 px-2 py-1.5 rounded-md border border-slate-200 text-xs focus:border-blue-500 focus:ring-1 focus:ring-blue-100 resize-none"
+              className="w-full h-16 px-3 py-2 rounded-lg bg-[#0f172a] border border-slate-700 text-xs text-slate-100 focus:border-cyan-500 focus:outline-none resize-none"
             />
           </div>
         </div>
@@ -636,15 +622,15 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
       </div>
 
       {/* Save Trigger Button */}
-      <div className="p-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
-        <span className="text-[9px] text-slate-400">
-          Click Save to commit changes to the patient chart.
+      <div className="p-4 border-t border-slate-800 bg-[#0f172a] flex items-center justify-between">
+        <span className="text-[10px] text-slate-500">
+          Click Apply and Save to commit changes to patient chart.
         </span>
         <button
           id="save-assessment-btn"
           type="button"
           onClick={handleSave}
-          className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition-all shadow-sm"
+          className="flex items-center gap-1.5 px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-slate-950 text-xs font-black rounded-lg transition-all shadow-md cursor-pointer"
         >
           <Save className="w-3.5 h-3.5" />
           <span>Apply and Save</span>
