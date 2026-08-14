@@ -166,15 +166,15 @@ export function getVesselParent(
 ): string {
   const archVariant = anatomy?.archVariant || 'standard';
 
-  if (vesselId.startsWith('l_vert_')) {
+  if (vesselId.startsWith('l_vert_') || vesselId === 'left_vertebral' || vesselId === 'l_vertebral') {
     if (archVariant === 'left_vertebral_from_arch') {
       return 'arch';
     }
-    return 'l_subcl_prox';
+    return vesselId.includes('vert_') ? 'l_subcl_prox' : 'left_subclavian';
   }
 
-  if (vesselId.startsWith('r_vert_')) {
-    return 'r_subcl_prox';
+  if (vesselId.startsWith('r_vert_') || vesselId === 'right_vertebral' || vesselId === 'r_vertebral') {
+    return vesselId.includes('vert_') ? 'r_subcl_prox' : 'right_subclavian';
   }
 
   if (vesselId === 'l_cca_prox') {
