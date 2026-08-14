@@ -1,16 +1,17 @@
 import React, { useState } from 'react';
-import { StudyData } from '../types';
+import { StudyData, MainTab } from '../types';
 import { generateSideSummary, checkCcaSuitability, generateClinicalImpressionNarrative } from '../utils/calculations';
 import { validateCarotidStudy, ValidationIssue } from '../utils/validationEngine';
 import { SEGMENTS_META } from '../constants';
 import { getAnatomicalVariationReportSentences, ARCH_VARIANTS_META, BIFURCATION_VARIANTS_META } from '../utils/anatomyVariants';
-import { FileText, Copy, Printer, Check, Clipboard, RefreshCw, AlertTriangle, ChevronRight, Sparkles, ShieldCheck, ShieldAlert, CheckCircle2, UserCheck, AlertCircle, GitBranch, Layers } from 'lucide-react';
+import { FileText, Copy, Printer, Check, Clipboard, RefreshCw, AlertTriangle, ChevronRight, Sparkles, ShieldCheck, ShieldAlert, CheckCircle2, UserCheck, AlertCircle, GitBranch, Layers, History, ArrowLeft } from 'lucide-react';
 
 interface ClinicalReportProps {
   studyData: StudyData;
   onConfirmClassification: (side: 'right' | 'left', category: string) => void;
   onUpdateStudy: (updates: Partial<StudyData>) => void;
   onResetAll: () => void;
+  onNavigateTab?: (tab: MainTab) => void;
 }
 
 export const ClinicalReport: React.FC<ClinicalReportProps> = ({
@@ -18,6 +19,7 @@ export const ClinicalReport: React.FC<ClinicalReportProps> = ({
   onConfirmClassification,
   onUpdateStudy,
   onResetAll,
+  onNavigateTab,
 }) => {
   const rightSummary = generateSideSummary('right', studyData);
   const leftSummary = generateSideSummary('left', studyData);
@@ -156,6 +158,17 @@ export const ClinicalReport: React.FC<ClinicalReportProps> = ({
       text += `\n`;
     }
 
+    if (studyData.priorExam?.hasPriorExam && studyData.priorExam.examDate) {
+      text += `LONGITUDINAL COMPARISON (Prior Exam: ${studyData.priorExam.examDate}${studyData.priorExam.facility ? ` at ${studyData.priorExam.facility}` : ''})\n`;
+      text += `------------------------------------------------------------------\n`;
+      text += `  - Right ICA: Prior Grade: ${studyData.priorExam.rightIcaClassification} (PSV ${studyData.priorExam.rightIcaPsv ?? 'N/A'} cm/s) vs Current: ${r.confirmedClassification} (PSV ${r.highestIcaPsv ?? 'N/A'} cm/s)\n`;
+      text += `  - Left ICA: Prior Grade: ${studyData.priorExam.leftIcaClassification} (PSV ${studyData.priorExam.leftIcaPsv ?? 'N/A'} cm/s) vs Current: ${l.confirmedClassification} (PSV ${l.highestIcaPsv ?? 'N/A'} cm/s)\n`;
+      if (studyData.priorExam.comparisonNotes) {
+        text += `  - Comparison Notes: ${studyData.priorExam.comparisonNotes}\n`;
+      }
+      text += `\n`;
+    }
+
     if (studyData.nonCarotidFindings.length > 0) {
       text += `NON-CAROTID / ASSOCIATED FINDINGS:\n`;
       studyData.nonCarotidFindings.forEach(f => {
@@ -279,6 +292,17 @@ export const ClinicalReport: React.FC<ClinicalReportProps> = ({
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
+            {onNavigateTab && (
+              <button
+                type="button"
+                id="btn-report-back-to-scan"
+                onClick={() => onNavigateTab('scan')}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-[#0b101f] hover:bg-slate-800 text-cyan-400 border border-slate-700 rounded-lg text-xs font-bold transition-all cursor-pointer"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Return to Scan Worksheet</span>
+              </button>
+            )}
             <button
               id="report-copy-btn"
               onClick={handleCopyToClipboard}
@@ -395,6 +419,54 @@ export const ClinicalReport: React.FC<ClinicalReportProps> = ({
                 </div>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* Prior Study Comparison Section */}
+        {studyData.priorExam?.hasPriorExam && studyData.priorExam.examDate && (
+          <div className="p-6 border-b border-slate-800 bg-[#081020]/70 space-y-3 print:bg-white print:border-b print:border-gray-300">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <History className="w-4 h-4 text-cyan-400 print:hidden" />
+                <h4 className="text-xs font-black uppercase tracking-wider text-slate-100 print:text-black">
+                  Longitudinal Comparison with Prior Examination ({studyData.priorExam.examDate}{studyData.priorExam.facility ? ` • ${studyData.priorExam.facility}` : ''})
+                </h4>
+              </div>
+              {onNavigateTab && (
+                <button
+                  type="button"
+                  onClick={() => onNavigateTab('previous')}
+                  className="text-[10px] text-cyan-400 hover:underline font-bold print:hidden"
+                >
+                  Edit Prior Comparison Details →
+                </button>
+              )}
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-mono">
+              <div className="p-3 bg-[#0b1329] border border-slate-800 rounded-lg space-y-1 print:bg-white print:border">
+                <span className="text-[10px] font-bold text-slate-400 uppercase block font-sans print:text-black">Right Carotid Interval</span>
+                <div className="text-slate-200 print:text-black">
+                  Prior: {studyData.priorExam.rightIcaClassification || 'N/A'} (PSV {studyData.priorExam.rightIcaPsv ?? '—'} cm/s)
+                </div>
+                <div className="font-bold text-cyan-300 print:text-black">
+                  Current: {rightSummary.confirmedClassification || rightSummary.suggestedClassification} (PSV {rightSummary.highestIcaPsv ?? '—'} cm/s)
+                </div>
+              </div>
+              <div className="p-3 bg-[#0b1329] border border-slate-800 rounded-lg space-y-1 print:bg-white print:border">
+                <span className="text-[10px] font-bold text-slate-400 uppercase block font-sans print:text-black">Left Carotid Interval</span>
+                <div className="text-slate-200 print:text-black">
+                  Prior: {studyData.priorExam.leftIcaClassification || 'N/A'} (PSV {studyData.priorExam.leftIcaPsv ?? '—'} cm/s)
+                </div>
+                <div className="font-bold text-cyan-300 print:text-black">
+                  Current: {leftSummary.confirmedClassification || leftSummary.suggestedClassification} (PSV {leftSummary.highestIcaPsv ?? '—'} cm/s)
+                </div>
+              </div>
+            </div>
+            {studyData.priorExam.comparisonNotes && (
+              <div className="text-xs text-slate-300 italic print:text-black">
+                {studyData.priorExam.comparisonNotes}
+              </div>
+            )}
           </div>
         )}
 

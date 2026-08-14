@@ -112,6 +112,45 @@ export interface NonCarotidFinding {
   comments: string;
 }
 
+export type MainTab = 'scan' | 'previous' | 'report';
+
+export interface PriorExamData {
+  hasPriorExam: boolean;
+  examDate: string;
+  facility: string;
+  sonographer?: string;
+  interpretingPhysician?: string;
+  hasPriorReport: boolean;
+  rightIcaPsv: number | null;
+  rightIcaEdv: number | null;
+  rightIcaRatio: number | null;
+  rightIcaClassification: string;
+  rightCcaPsv: number | null;
+  rightPlaqueLocation: string;
+  rightPlaqueThicknessMm: number | null;
+  rightPlaqueMorphology: string;
+  rightPlaqueSurface: string;
+  rightVertFlow: FlowDirection;
+  rightSubclavian: string;
+  rightIntervention: string;
+  
+  leftIcaPsv: number | null;
+  leftIcaEdv: number | null;
+  leftIcaRatio: number | null;
+  leftIcaClassification: string;
+  leftCcaPsv: number | null;
+  leftPlaqueLocation: string;
+  leftPlaqueThicknessMm: number | null;
+  leftPlaqueMorphology: string;
+  leftPlaqueSurface: string;
+  leftVertFlow: FlowDirection;
+  leftSubclavian: string;
+  leftIntervention: string;
+  
+  priorReportText: string;
+  comparisonNotes: string;
+}
+
 export interface StudyData {
   segments: Record<string, SegmentData>;
   plaques: PlaqueData[];
@@ -149,6 +188,7 @@ export interface StudyData {
   symptomatic: boolean;
   vascularHistory: string;
   nonCarotidFindings: NonCarotidFinding[];
+  priorExam?: PriorExamData;
   keyImpressions: {
     right: string;
     left: string;
