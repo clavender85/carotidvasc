@@ -1,7 +1,10 @@
 import React, { useState } from 'react';
 import { StudyData, ArchVariant, BifurcationVariant } from '../types';
 import { CAROTID_INDICATIONS } from '../constants';
-import { FileText, ShieldAlert, Check, ChevronDown, ChevronUp, Activity, AlertCircle, Sparkles, Tag, GitFork } from 'lucide-react';
+import { AUSTRALIA_DEFAULT_CONFIG } from '../data/protocols/australia';
+import { UNITED_STATES_DEFAULT_CONFIG } from '../data/protocols/unitedStates';
+import { UNIVERSAL_CORE_DEFAULT_DATASET } from '../data/protocols/universalCore';
+import { FileText, ShieldAlert, Check, ChevronDown, ChevronUp, Activity, AlertCircle, Sparkles, Tag, GitFork, Sliders } from 'lucide-react';
 
 interface ClinicalContextSectionProps {
   studyData: StudyData;
@@ -25,6 +28,52 @@ export const ClinicalContextSection: React.FC<ClinicalContextSectionProps> = ({
 }) => {
   const [isExpanded, setIsExpanded] = useState<boolean>(false);
   const [activeSubTab, setActiveSubTab] = useState<'indications' | 'history' | 'limitations' | 'anatomy'>('indications');
+
+  const currentPresetId = studyData.siteProtocol?.protocolPresetId ||
+    (studyData.classificationSystem === 'IAC_MODIFIED_SRU_2023' || studyData.classificationSystem === 'MODIFIED_SRU_2021'
+      ? 'united_states_iac'
+      : 'australia_asum');
+
+  const handleSelectPreset = (presetId: string) => {
+    if (presetId === 'australia_asum') {
+      onUpdateStudy({
+        classificationSystem: 'ASUM_2021',
+        siteProtocol: {
+          ...AUSTRALIA_DEFAULT_CONFIG,
+          protocolPresetId: 'australia_asum',
+          localProtocolName: 'Australian Standard Carotid Duplex Protocol'
+        }
+      });
+    } else if (presetId === 'united_states_iac') {
+      onUpdateStudy({
+        classificationSystem: 'IAC_MODIFIED_SRU_2023',
+        siteProtocol: {
+          ...UNITED_STATES_DEFAULT_CONFIG,
+          protocolPresetId: 'united_states_iac',
+          localProtocolName: 'US IAC Carotid Duplex Performance Protocol'
+        }
+      });
+    } else if (presetId === 'universal_core') {
+      onUpdateStudy({
+        classificationSystem: 'ASUM_2021',
+        siteProtocol: {
+          ...AUSTRALIA_DEFAULT_CONFIG,
+          protocolPresetId: 'universal_core',
+          localProtocolName: 'Universal Core Carotid Protocol',
+          segmentRequirements: { ...UNIVERSAL_CORE_DEFAULT_DATASET }
+        }
+      });
+    } else if (presetId === 'custom_site') {
+      onUpdateStudy({
+        classificationSystem: 'CUSTOM',
+        siteProtocol: {
+          ...(studyData.siteProtocol || AUSTRALIA_DEFAULT_CONFIG),
+          protocolPresetId: 'custom_site',
+          localProtocolName: studyData.siteProtocol?.localProtocolName || 'Custom Site Protocol'
+        }
+      });
+    }
+  };
 
   const handleIndicationToggle = (ind: string) => {
     const current = [...studyData.clinicalIndications];
@@ -53,6 +102,11 @@ export const ClinicalContextSection: React.FC<ClinicalContextSectionProps> = ({
   const indicationCount = studyData.clinicalIndications.length;
   const historyText = studyData.vascularHistory.trim();
   const limitationsText = studyData.studyComments.trim();
+  
+  const historyItems = historyText
+    ? historyText.split(/[,;\n]+/).map(s => s.trim()).filter(Boolean)
+    : [];
+
   const archVariantLabel =
     studyData.anatomyVariants?.archVariant === 'bovine_common_origin'
       ? 'Bovine Arch'
@@ -66,6 +120,13 @@ export const ClinicalContextSection: React.FC<ClinicalContextSectionProps> = ({
       ? 'Variant BCT'
       : 'Standard Arch';
 
+  const protocolDisplayNames: Record<string, string> = {
+    australia_asum: 'Australia — ASUM',
+    united_states_iac: 'United States — IAC',
+    universal_core: 'Universal / Core Carotid',
+    custom_site: 'Site Specific / Custom'
+  };
+
   return (
     <div
       id="clinical-context-section"
@@ -74,53 +135,132 @@ export const ClinicalContextSection: React.FC<ClinicalContextSectionProps> = ({
       {/* Header Bar / Summary Trigger */}
       <div
         onClick={() => setIsExpanded(!isExpanded)}
-        className="p-3 sm:p-3.5 flex flex-col md:flex-row md:items-center justify-between gap-2.5 bg-[#0d162f] cursor-pointer hover:bg-[#101c3d] transition-all"
+        className="p-3.5 sm:p-4 bg-[#0d162f] cursor-pointer hover:bg-[#101c3d] transition-all"
       >
-        <div className="flex items-center gap-2.5 flex-wrap">
-          <div className="w-7 h-7 rounded-lg bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shrink-0">
-            <FileText className="w-3.5 h-3.5" />
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          {/* Left: Title & Count */}
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <div className="w-8 h-8 rounded-lg bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shrink-0">
+              <FileText className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs sm:text-sm font-black text-slate-100 uppercase tracking-wide">
+                  Clinical Indications & Context
+                </span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono font-bold border border-slate-700">
+                  {indicationCount} Indication{indicationCount !== 1 ? 's' : ''}
+                </span>
+              </div>
+            </div>
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-black text-slate-100 uppercase tracking-wider">
-                Clinical Indications & Context
-              </span>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono">
-                {indicationCount} Indication{indicationCount !== 1 ? 's' : ''}
-              </span>
+
+          {/* Right: Protocol Preset Selector & Toggle Button */}
+          <div className="flex items-center gap-2.5 flex-wrap self-start sm:self-auto">
+            {/* Single Unified Protocol Preset Control */}
+            <div
+              className="flex items-center gap-1.5 bg-[#080d19] px-2.5 py-1.5 rounded-lg border border-cyan-700/80 shadow-xs"
+              onClick={(e) => e.stopPropagation()}
+              title="Select active clinical duplex protocol preset"
+            >
+              <Sliders className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+              <select
+                id="select-clinical-protocol-preset"
+                value={currentPresetId}
+                onChange={(e) => handleSelectPreset(e.target.value)}
+                className="bg-transparent text-cyan-300 text-xs font-black focus:outline-none cursor-pointer pr-1"
+              >
+                <option value="australia_asum" className="bg-[#0b1329] text-slate-100 font-bold">ASUM 2021 preset</option>
+                <option value="united_states_iac" className="bg-[#0b1329] text-slate-100 font-bold">IAC 2023 preset</option>
+                <option value="universal_core" className="bg-[#0b1329] text-slate-100 font-bold">Universal Core preset</option>
+                <option value="custom_site" className="bg-[#0b1329] text-slate-100 font-bold">Custom Site preset</option>
+              </select>
             </div>
-            {/* Collapsed quick preview line */}
-            <div className="text-[11px] text-slate-400 flex items-center gap-2 flex-wrap mt-0.5">
-              <span>
-                Indications:{' '}
-                <strong className="text-slate-200">
-                  {indicationCount > 0 ? studyData.clinicalIndications.slice(0, 2).join(', ') + (indicationCount > 2 ? ` +${indicationCount - 2} more` : '') : 'None specified'}
-                </strong>
-              </span>
-              <span>•</span>
-              <span>
-                History:{' '}
-                <strong className="text-slate-200">
-                  {historyText ? (historyText.length > 25 ? historyText.substring(0, 25) + '…' : historyText) : 'None documented'}
-                </strong>
-              </span>
-              <span>•</span>
-              <span>
-                Anatomy: <strong className="text-cyan-400">{archVariantLabel}</strong>
-              </span>
-            </div>
+
+            <button
+              type="button"
+              id="toggle-clinical-context-expand"
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer border ${
+                isExpanded
+                  ? 'bg-cyan-600 text-slate-950 border-cyan-500 font-extrabold'
+                  : 'bg-[#0f172a] text-cyan-400 border-slate-700 hover:bg-[#1e293b] hover:text-cyan-300'
+              }`}
+            >
+              <span>{isExpanded ? 'Collapse' : 'Expand & Edit'}</span>
+              {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            </button>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 self-end md:self-center shrink-0">
-          <button
-            type="button"
-            className="text-[11px] font-bold text-cyan-400 hover:text-cyan-300 flex items-center gap-1"
-          >
-            <span>{isExpanded ? 'Collapse' : 'Expand & Edit'}</span>
-            {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-          </button>
-        </div>
+        {/* Collapsed Complete Summary Display (Shows ALL selected items wrapped with no truncation) */}
+        {!isExpanded && (
+          <div className="mt-3 pt-3 border-t border-slate-800/80 space-y-2.5 text-xs">
+            {/* Row 1: All Indications as chips */}
+            <div className="flex flex-wrap items-start gap-1.5">
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider shrink-0 mt-0.5 w-36">
+                Indications:
+              </span>
+              <div className="flex flex-wrap items-center gap-1.5 flex-1 min-w-[200px]">
+                {studyData.clinicalIndications.length > 0 ? (
+                  studyData.clinicalIndications.map(ind => (
+                    <span
+                      key={ind}
+                      className="px-2 py-0.5 rounded bg-cyan-950/70 border border-cyan-800/80 text-cyan-200 text-[11px] font-semibold tracking-tight shadow-xs"
+                    >
+                      {ind}
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-[11px] text-slate-400 italic font-sans">
+                    No indications selected
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Row 2: History and Risk Factors chips */}
+            <div className="flex flex-wrap items-start gap-1.5">
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider shrink-0 mt-0.5 w-36">
+                History / Risk Factors:
+              </span>
+              <div className="flex flex-wrap items-center gap-1.5 flex-1 min-w-[200px]">
+                {historyItems.length > 0 ? (
+                  historyItems.map((hist, idx) => (
+                    <span
+                      key={idx}
+                      className="px-2 py-0.5 rounded bg-slate-800/90 border border-slate-700 text-slate-200 text-[11px] font-medium shadow-xs"
+                    >
+                      {hist}
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-[11px] text-slate-400 italic font-sans">
+                    No relevant history recorded
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Row 3: Anatomy and any Limitations */}
+            <div className="flex flex-wrap items-start gap-1.5 pt-0.5">
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider shrink-0 mt-0.5 w-36">
+                Anatomy:
+              </span>
+              <div className="flex flex-wrap items-center gap-2 flex-1 min-w-[200px]">
+                <span className="px-2 py-0.5 rounded bg-indigo-950/70 border border-indigo-800 text-indigo-200 text-[11px] font-bold shadow-xs">
+                  {archVariantLabel}
+                </span>
+
+                {limitationsText && (
+                  <div className="flex items-center gap-1 text-[11px] text-slate-400 ml-2">
+                    <span className="text-[10px] font-bold uppercase text-slate-400">Notes:</span>
+                    <span className="text-amber-300 font-medium truncate max-w-xs">{limitationsText}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Expanded Accordion Body */}
@@ -130,7 +270,7 @@ export const ClinicalContextSection: React.FC<ClinicalContextSectionProps> = ({
           <div className="flex items-center gap-1.5 border-b border-slate-800/80 pb-2 overflow-x-auto">
             {[
               { id: 'indications', label: 'Indications & Presentation', count: indicationCount },
-              { id: 'history', label: 'Vascular History & Risks', count: historyText ? 1 : 0 },
+              { id: 'history', label: 'Vascular History & Risks', count: historyItems.length },
               { id: 'limitations', label: 'Technical Limitations & Notes', count: limitationsText ? 1 : 0 },
               { id: 'anatomy', label: 'Anatomy Variants', count: studyData.anatomyVariants?.archVariant !== 'standard' ? 1 : 0 },
             ].map(subTab => (

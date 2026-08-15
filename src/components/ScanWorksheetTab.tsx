@@ -202,7 +202,13 @@ export const ScanWorksheetTab: React.FC<ScanWorksheetTabProps> = ({
         onNavigateTab={onNavigateTab}
       />
 
-      {/* 2. Persistent High-Level Abnormal Carotid Findings & Steal Alert Banner */}
+      {/* 2. Clinical Indications & Context Section (with integrated Protocol Preset & complete wrapped chips) */}
+      <ClinicalContextSection
+        studyData={studyData}
+        onUpdateStudy={onUpdateStudy}
+      />
+
+      {/* 3. Active Findings & Hemodynamic Summary (Full-width summary above anatomical workspace) */}
       <AbnormalCarotidFindingsPanel
         studyData={studyData}
         onSelectSegment={onSelectSegment}
@@ -214,25 +220,7 @@ export const ScanWorksheetTab: React.FC<ScanWorksheetTabProps> = ({
         }}
       />
 
-      {/* 3. Clinical Indications & Context Section (Collapsible) */}
-      <ClinicalContextSection
-        studyData={studyData}
-        onUpdateStudy={onUpdateStudy}
-      />
-
-      {/* 3b. Active Clinical Dynamic Protocol Governance & Trigger Banner */}
-      <DynamicProtocolBanner
-        studyData={studyData}
-        evaluation={dynamicEvaluation}
-        onSelectSegment={(id) => {
-          onSelectSegment(id, false);
-          onSetActiveSegment(id);
-        }}
-        onOpenTechnicalModal={handleOpenTechModal}
-        onNavigateTab={onNavigateTab}
-      />
-
-      {/* 4. Quick Scanning Controls Bar & View Switcher */}
+      {/* 4. Scanning View Switcher & Quick Normal Controls Bar */}
       <div className="bg-[#0b1329] border border-slate-800 p-2.5 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md">
         {/* Left: View Mode Toggle */}
         <div className="flex items-center gap-1.5 bg-[#080d19] p-1 rounded-lg border border-slate-800 shrink-0">
@@ -302,10 +290,22 @@ export const ScanWorksheetTab: React.FC<ScanWorksheetTabProps> = ({
         </div>
       </div>
 
-      {/* 5. Primary Active Scanning Workspace Grid */}
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
+      {/* 5. Carotid Anatomical Workspace & Detailed Assessment Grid */}
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 items-start">
         {/* Main Vascular Workspace (8 cols) */}
-        <main className="xl:col-span-8 space-y-6">
+        <main className="xl:col-span-8 space-y-4">
+          {/* Dynamic Protocol Contextual Trigger Alerts & Compact Status */}
+          <DynamicProtocolBanner
+            studyData={studyData}
+            evaluation={dynamicEvaluation}
+            onSelectSegment={(id) => {
+              onSelectSegment(id, false);
+              onSetActiveSegment(id);
+            }}
+            onOpenTechnicalModal={handleOpenTechModal}
+            onNavigateTab={onNavigateTab}
+          />
+
           {assessmentViewMode === 'diagram_tree' ? (
             <>
               {/* Interactive Anatomical Diagram with Variant Toolbar */}

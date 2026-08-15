@@ -139,7 +139,7 @@ export const PatientExaminationHeader: React.FC<PatientExaminationHeaderProps> =
             <span className="text-[10px] text-slate-400">All fields auto-save immediately to structured report</span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
             <div>
               <label className="block text-[10px] font-bold text-slate-300 uppercase mb-1">Patient Full Name</label>
               <input
@@ -197,22 +197,6 @@ export const PatientExaminationHeader: React.FC<PatientExaminationHeaderProps> =
                 onChange={(e) => onUpdateStudy({ interpretingPhysician: e.target.value })}
                 className="w-full px-3 py-1.5 rounded-lg bg-[#0f172a] border border-slate-700 text-xs text-slate-100 focus:border-cyan-500 focus:outline-none"
               />
-            </div>
-
-            <div>
-              <label className="block text-[10px] font-bold text-slate-300 uppercase mb-1">Diagnostic Protocol</label>
-              <select
-                id="select-scan-classification-system"
-                value={studyData.classificationSystem}
-                onChange={(e) => onUpdateStudy({ classificationSystem: e.target.value as ClassificationSystem })}
-                className="w-full px-2.5 py-1.5 rounded-lg bg-[#0f172a] border border-cyan-700 text-xs font-bold text-cyan-300 focus:border-cyan-400 focus:outline-none"
-              >
-                <option value="ASUM_2021">ASUM 2021 Guidelines</option>
-                <option value="MODIFIED_SRU_2021">Modified SRU / IAC</option>
-                <option value="SRU_2003">SRU Consensus (2003)</option>
-                <option value="NASCET_INDEX">Sonographic NASCET</option>
-                <option value="CUSTOM">Custom Laboratory</option>
-              </select>
             </div>
           </div>
         </div>
