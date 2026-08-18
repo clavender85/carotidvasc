@@ -11,7 +11,8 @@ import { CriteriaLibrary } from './CriteriaLibrary';
 import { SiteProtocolEditor } from './SiteProtocolEditor';
 import { ProtocolChecklist } from './ProtocolChecklist';
 import { ProtocolTestSuiteRunner } from './ProtocolTestSuiteRunner';
-import { BookOpen, ShieldCheck, Building2, ChevronDown, ChevronRight, ExternalLink, FileText, CheckCircle2, Terminal } from 'lucide-react';
+import { WaveformDescriptorGuide } from '../WaveformDescriptorGuide';
+import { BookOpen, ShieldCheck, Building2, ChevronDown, ChevronRight, ExternalLink, FileText, CheckCircle2, Terminal, Activity } from 'lucide-react';
 
 interface ProtocolPageProps {
   studyData: StudyData;
@@ -23,7 +24,7 @@ export const ProtocolPage: React.FC<ProtocolPageProps> = ({
   onUpdateStudyData
 }) => {
   const [activeView, setActiveView] = useState<'protocol' | 'checklist'>('protocol');
-  const [activePresetTab, setActivePresetTab] = useState<'universal' | 'criteria' | 'site_addendum' | 'test_suite'>('universal');
+  const [activePresetTab, setActivePresetTab] = useState<'universal' | 'criteria' | 'waveform_reference' | 'site_addendum' | 'test_suite'>('universal');
   const [referencesOpen, setReferencesOpen] = useState(false);
 
   const siteConfig = studyData.siteProtocol || AUSTRALIA_DEFAULT_CONFIG;
@@ -165,6 +166,20 @@ export const ProtocolPage: React.FC<ProtocolPageProps> = ({
 
             <button
               type="button"
+              id="tab-view-waveform-reference"
+              onClick={() => setActivePresetTab('waveform_reference')}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+                activePresetTab === 'waveform_reference'
+                  ? 'bg-emerald-500/20 border border-emerald-500/60 text-emerald-300 font-extrabold shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+              }`}
+            >
+              <Activity className="w-4 h-4 text-emerald-400" />
+              <span>Waveform & Hemodynamic Reference</span>
+            </button>
+
+            <button
+              type="button"
               id="tab-view-site-addendum"
               onClick={() => setActivePresetTab('site_addendum')}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
@@ -213,6 +228,17 @@ export const ProtocolPage: React.FC<ProtocolPageProps> = ({
               activeCriteria={studyData.classificationSystem}
               onSelectCriteria={handleSelectCriteria}
             />
+          )}
+
+          {activePresetTab === 'waveform_reference' && (
+            <div className="bg-[#0b1329] border border-slate-800 rounded-2xl p-6 shadow-xl">
+              <WaveformDescriptorGuide
+                isOpen={true}
+                onClose={() => {}}
+                embedMode={true}
+                category="ica"
+              />
+            </div>
           )}
 
           {activePresetTab === 'site_addendum' && (

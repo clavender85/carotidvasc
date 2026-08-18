@@ -194,6 +194,30 @@ export const DYNAMIC_RULES_CATALOG: DynamicProtocolRule[] = [
     source: 'regional',
     ifCondition: 'Special exam type = post_cea or patient history includes CEA',
     thenAction: 'Enforce surgical transition zone and patch inspection'
+  },
+  {
+    id: 'rule_tardus_parvus_proximal_inflow',
+    name: 'Tardus-Parvus Proximal Inflow Disease Review',
+    description: 'When a tardus-parvus waveform (prolonged systolic acceleration time, rounded/blunted peak) is detected, mandates ipsilateral proximal inflow and aortic arch review.',
+    priority: 85,
+    category: 'carotid',
+    severity: 'blocking',
+    enabled: true,
+    source: 'universal',
+    ifCondition: 'Waveform on any carotid or vertebral segment = Tardus-parvus',
+    thenAction: 'Trigger mandatory proximal origin/inflow interrogation for upstream flow-limiting lesion'
+  },
+  {
+    id: 'rule_damped_waveform_review',
+    name: 'Damped Waveform Hemodynamic Correlation',
+    description: 'When a damped waveform is documented, recommends correlation with proximal origin or systemic cardiac output.',
+    priority: 45,
+    category: 'carotid',
+    severity: 'recommendation',
+    enabled: true,
+    source: 'universal',
+    ifCondition: 'Waveform on any segment = Damped',
+    thenAction: 'Recommend proximal inflow correlation and cardiac status review'
   }
 ];
 
@@ -815,6 +839,69 @@ export function evaluatePostInterventionRules(context: ProtocolContext): Protoco
   return requirements;
 }
 
+export function evaluateWaveformHemodynamicRules(context: ProtocolContext): ProtocolRequirement[] {
+  const { study } = context;
+  const requirements: ProtocolRequirement[] = [];
+  const overrides = study.technicalOverrides || {};
+  const sides: Side[] = ['right', 'left'];
+
+  for (const side of sides) {
+    const prefix = side === 'right' ? 'r' : 'l';
+    const sideCap = side.charAt(0).toUpperCase() + side.slice(1);
+
+    const ccaProx = study.segments[`${prefix}_cca_prox`];
+    const ccaMid = study.segments[`${prefix}_cca_mid`];
+    const ccaDist = study.segments[`${prefix}_cca_dist`];
+    const icaProx = study.segments[`${prefix}_ica_prox`];
+    const vertMid = study.segments[`${prefix}_vert_mid`];
+
+    const carotids = [ccaProx, ccaMid, ccaDist, icaProx].filter(Boolean);
+    const hasTardusCarotid = carotids.some(s => (s?.waveform || '').toLowerCase().includes('tardus'));
+    const hasTardusVert = (vertMid?.waveform || '').toLowerCase().includes('tardus');
+
+    if (hasTardusCarotid || hasTardusVert) {
+      requirements.push({
+        id: `dyn_${side}_tardus_parvus_inflow`,
+        label: `${sideCap} Proximal Inflow Assessment (Tardus-Parvus Waveform Detected)`,
+        category: 'carotid',
+        side,
+        vesselId: `${prefix}_cca_prox`,
+        targetSegmentId: `${prefix}_cca_prox`,
+        targetModule: 'segment',
+        level: 'required',
+        blocking: true,
+        allowTechnicalOverride: true,
+        reason: `Tardus-parvus waveform identified in the ${sideCap} system. Delayed systolic acceleration and rounded systolic peaks indicate severe proximal inflow stenosis or occlusion upstream (${side === 'right' ? 'RCCA origin / Brachiocephalic Trunk' : 'LCCA origin / Aortic Arch'}).`,
+        triggeredBy: `${sideCap} Tardus-Parvus Waveform`,
+        sourceRuleId: 'rule_tardus_parvus_proximal_inflow',
+        satisfied: !!(overrides[`dyn_${side}_tardus_parvus_inflow`] || (isSegmentAssessed(study.segments[`${prefix}_cca_prox`]) && (ccaProx?.comments?.length || 0) > 0))
+      });
+    }
+
+    const hasDampedCarotid = carotids.some(s => (s?.waveform || '').toLowerCase().includes('damped') && !(s?.waveform || '').toLowerCase().includes('tardus'));
+    if (hasDampedCarotid) {
+      requirements.push({
+        id: `dyn_${side}_damped_inflow_review`,
+        label: `Review ${sideCap} Proximal Inflow (Damped Carotid Waveform)`,
+        category: 'carotid',
+        side,
+        vesselId: `${prefix}_cca_prox`,
+        targetSegmentId: `${prefix}_cca_prox`,
+        targetModule: 'segment',
+        level: 'recommended',
+        blocking: false,
+        allowTechnicalOverride: true,
+        reason: `Damped waveform documented in ${sideCap} carotid artery. Review proximal vessel origins and correlate with systemic hemodynamic status (cardiac output/aortic valve).`,
+        triggeredBy: `${sideCap} Damped Waveform`,
+        sourceRuleId: 'rule_damped_waveform_review',
+        satisfied: !!(overrides[`dyn_${side}_damped_inflow_review`] || isSegmentAssessed(study.segments[`${prefix}_cca_prox`]))
+      });
+    }
+  }
+
+  return requirements;
+}
+
 export function evaluateRequirementCompletion(
   requirement: ProtocolRequirement,
   context: ProtocolContext
@@ -1060,6 +1147,7 @@ export function evaluateDynamicProtocol(
   const dynamic = [
     ...evaluateVertebralRules(context),
     ...evaluateIcaRules(context),
+    ...evaluateWaveformHemodynamicRules(context),
     ...evaluatePlaqueRules(context),
     ...evaluateCcaReferenceRules(context),
     ...evaluateOcclusionRules(context),

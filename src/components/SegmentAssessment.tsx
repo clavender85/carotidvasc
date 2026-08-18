@@ -2,7 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { StudyData, SegmentData, FlowDirection } from '../types';
 import { SEGMENTS_META } from '../constants';
 import { calculateLocalPsvRatio, findUpstreamNormalSegment } from '../utils/calculations';
-import { Check, ClipboardList, Info, ShieldAlert, Sliders, Save, Plus } from 'lucide-react';
+import { Check, ClipboardList, Info, ShieldAlert, Sliders, Save, Plus, HelpCircle, Activity } from 'lucide-react';
+import { 
+  getWaveformOptionsForVessel, 
+  findWaveformDescriptor, 
+  VesselCategory, 
+  WaveformDescriptor,
+  WAVEFORM_DESCRIPTORS 
+} from '../data/waveformDescriptors';
+import { WaveformDescriptorGuide } from './WaveformDescriptorGuide';
+import { WaveformHoverCard } from './WaveformHoverCard';
 
 interface SegmentAssessmentProps {
   studyData: StudyData;
@@ -43,6 +52,10 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
   const [preStenosisPsv, setPreStenosisPsv] = useState<string>('');
   const [atStenosisPsv, setAtStenosisPsv] = useState<string>('');
   const [postStenosisPsv, setPostStenosisPsv] = useState<string>('');
+
+  // Waveform reference guide state
+  const [guideOpen, setGuideOpen] = useState(false);
+  const [guideInitialDescriptor, setGuideInitialDescriptor] = useState<string | undefined>(undefined);
 
   // Bulk mode checkbox overrides
   const [applyPsv, setApplyPsv] = useState(false);
@@ -181,29 +194,10 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
 
   const targetSegmentId = currentId;
   const isVertebral = targetSegmentId && SEGMENTS_META[targetSegmentId]?.type === 'vertebral';
-
-  const vertebralPresets: { label: string; character: string; flow: FlowDirection; waveText: string }[] = [
-    { label: 'Normal Antegrade', character: 'normal_antegrade', flow: 'antegrade', waveText: 'Normal antegrade' },
-    { label: 'Early Systolic Decel', character: 'early_systolic_deceleration', flow: 'antegrade', waveText: 'Early systolic deceleration' },
-    { label: 'Bunny / Pre-Steal', character: 'bunny_pre_steal', flow: 'antegrade', waveText: 'Bunny / Pre-steal morphology' },
-    { label: 'Bidirectional / Partial Steal', character: 'bidirectional_partial_steal', flow: 'bidirectional', waveText: 'Bidirectional / Partial Steal' },
-    { label: 'Complete Reversal', character: 'complete_reversal', flow: 'retrograde', waveText: 'Complete flow reversal' },
-    { label: 'Dampened', character: 'dampened', flow: 'antegrade', waveText: 'Dampened low resistance' },
-    { label: 'High Resistance', character: 'high_resistance', flow: 'antegrade', waveText: 'High resistance / distal resistance' }
-  ];
-
-  const wavePresets = [
-    'Normal Low Resistance',
-    'Normal High Resistance',
-    'Triphasic',
-    'Biphasic',
-    'Monophasic',
-    'Tardus-Parvus',
-    'Turbulent / High velocity',
-    'Dampened',
-    'Terminal Thump',
-    'Pre-occlusive string sign'
-  ];
+  const targetMeta = targetSegmentId ? SEGMENTS_META[targetSegmentId] : null;
+  const vesselCategory: VesselCategory = (targetMeta?.type as VesselCategory) || (isVertebral ? 'vertebral' : 'ica');
+  const vesselWaveformOptions = getWaveformOptionsForVessel(vesselCategory);
+  const activeDescriptor = findWaveformDescriptor(waveform, vesselCategory);
 
   // For Local Ratio computation
   const localRatioData = targetSegmentId ? calculateLocalPsvRatio(targetSegmentId, studyData) : null;
@@ -412,63 +406,117 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
           </div>
         </div>
 
-        {/* 3. Waveform Presets */}
+        {/* 3. Waveform Section */}
         <div className={isBulk && !applyWave ? 'opacity-40 pointer-events-none' : ''}>
-          <div className="flex items-center justify-between mb-1">
-            <label className="block text-[11px] font-bold uppercase text-slate-300">
-              Waveform Characteristics {isVertebral && <span className="text-cyan-400 font-mono font-bold">(Vertebral Steal Protocol)</span>}
-            </label>
-            {isVertebral && (
-              <span className="text-[9.5px] text-amber-300/90 font-mono">
-                Bunny/Reversal auto-syncs flow & triggers Subclavian
-              </span>
-            )}
+          <div className="flex items-center justify-between mb-1.5">
+            <div className="flex items-center gap-2">
+              <label className="block text-[11px] font-bold uppercase text-slate-300">
+                Waveform
+              </label>
+              {isVertebral && (
+                <span className="px-1.5 py-0.2 rounded text-[8.5px] font-bold bg-cyan-950/70 border border-cyan-700 text-cyan-300">
+                  Vertebral Steal Protocol
+                </span>
+              )}
+            </div>
+            <button
+              type="button"
+              id="btn-open-waveform-guide"
+              onClick={() => {
+                setGuideInitialDescriptor(activeDescriptor?.id);
+                setGuideOpen(true);
+              }}
+              className="flex items-center gap-1 text-[10px] font-semibold text-cyan-400 hover:text-cyan-300 transition-colors cursor-pointer"
+              title="Open full interactive waveform descriptor reference and criteria guide"
+            >
+              <Activity className="w-3 h-3 text-cyan-400" />
+              <span>Reference & Examples</span>
+            </button>
           </div>
 
-          {isVertebral ? (
-            <div className="flex flex-wrap gap-1.5 mb-2">
-              {vertebralPresets.map(preset => (
-                <button
-                  key={preset.character}
-                  type="button"
-                  id={`vert-preset-${preset.character}`}
-                  onClick={() => {
-                    setWaveform(preset.waveText);
-                    setFlowDirection(preset.flow);
+          {/* Structured Descriptor Chips */}
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {vesselWaveformOptions.map(opt => {
+              const isSelected = waveform === opt.label || (opt.id === 'normal' && waveform.toLowerCase() === 'normal');
+              return (
+                <WaveformHoverCard
+                  key={opt.id}
+                  descriptor={opt}
+                  vesselCategory={vesselCategory}
+                  onOpenGuide={() => {
+                    setGuideInitialDescriptor(opt.id);
+                    setGuideOpen(true);
                   }}
-                  className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all border cursor-pointer ${
-                    waveform === preset.waveText
-                      ? 'bg-cyan-600 text-slate-950 border-cyan-400 font-black shadow-sm'
-                      : 'bg-[#0f172a] border-slate-800 text-slate-300 hover:bg-slate-800 hover:border-slate-700'
-                  }`}
                 >
-                  {preset.label}
-                </button>
-              ))}
-            </div>
-          ) : (
-            <div className="flex flex-wrap gap-1.5 mb-2">
-              {wavePresets.map(w => (
-                <button
-                  key={w}
-                  type="button"
-                  id={`waveform-preset-${w.replace(/\s+/g, '-').toLowerCase()}`}
-                  onClick={() => setWaveform(w)}
-                  className={`px-2 py-1 rounded text-[9.5px] font-bold transition-all border cursor-pointer ${
-                    waveform === w
-                      ? 'bg-cyan-950/70 border-cyan-500 text-cyan-200'
-                      : 'bg-[#0f172a] border-slate-800 text-slate-400 hover:bg-slate-800'
-                  }`}
-                >
-                  {w}
-                </button>
-              ))}
+                  <button
+                    type="button"
+                    id={`waveform-chip-${opt.id}`}
+                    onClick={() => {
+                      setWaveform(opt.label);
+                      // Auto-sync vertebral flow direction if applicable
+                      if (isVertebral) {
+                        if (opt.id === 'bidirectional_partial_steal') {
+                          setFlowDirection('bidirectional');
+                        } else if (opt.id === 'complete_reversal') {
+                          setFlowDirection('retrograde');
+                        } else if (opt.id === 'absent') {
+                          setFlowDirection('absent');
+                        } else if (flowDirection === 'not_assessed') {
+                          setFlowDirection('antegrade');
+                        }
+                      } else {
+                        if (opt.id === 'absent') {
+                          setFlowDirection('absent');
+                        } else if (flowDirection === 'not_assessed') {
+                          setFlowDirection('antegrade');
+                        }
+                      }
+                    }}
+                    className={`px-2 py-1 rounded text-[9.5px] font-bold transition-all border cursor-pointer ${
+                      isSelected
+                        ? opt.id === 'normal'
+                          ? 'bg-emerald-950/70 border-emerald-500 text-emerald-300 font-extrabold shadow-sm'
+                          : opt.id.includes('steal') || opt.id.includes('reversal') || opt.id === 'tardus_parvus'
+                          ? 'bg-amber-950/80 border-amber-500 text-amber-200 font-extrabold shadow-sm'
+                          : 'bg-cyan-950/70 border-cyan-500 text-cyan-200 font-extrabold shadow-sm'
+                        : 'bg-[#0f172a] border-slate-800 text-slate-300 hover:bg-slate-800 hover:border-slate-700'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                </WaveformHoverCard>
+              );
+            })}
+          </div>
+
+          {/* Active Descriptor Dynamic Diagnostic Banner */}
+          {activeDescriptor && activeDescriptor.id !== 'normal' && activeDescriptor.id !== 'not_assessed' && (
+            <div className="mb-2 p-2 rounded-lg bg-[#071120] border border-cyan-900/60 flex items-start justify-between gap-2 text-[10.5px]">
+              <div>
+                <span className="font-bold text-cyan-300 block">
+                  {activeDescriptor.label}
+                </span>
+                <span className="text-slate-400 text-[9.5px] line-clamp-2">
+                  {activeDescriptor.interpretation}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setGuideInitialDescriptor(activeDescriptor.id);
+                  setGuideOpen(true);
+                }}
+                className="shrink-0 text-[9px] font-bold text-cyan-400 hover:underline cursor-pointer"
+              >
+                View Criteria →
+              </button>
             </div>
           )}
+
           <input
             id="input-waveform-custom"
             type="text"
-            placeholder="Type custom waveform profile..."
+            placeholder="Type custom waveform profile or qualifier..."
             value={waveform}
             onChange={(e) => setWaveform(e.target.value)}
             className="w-full px-3 py-1.5 rounded-lg bg-[#0f172a] border border-slate-700 text-xs text-slate-100 focus:border-cyan-500 focus:outline-none"
@@ -679,6 +727,35 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
           <span>Apply and Save</span>
         </button>
       </div>
+
+      {/* Waveform Reference & Criteria Modal */}
+      <WaveformDescriptorGuide
+        isOpen={guideOpen}
+        onClose={() => setGuideOpen(false)}
+        category={vesselCategory}
+        initialDescriptorId={guideInitialDescriptor}
+        onSelectDescriptor={(desc) => {
+          setWaveform(desc.label);
+          if (isVertebral) {
+            if (desc.id === 'bidirectional_partial_steal') {
+              setFlowDirection('bidirectional');
+            } else if (desc.id === 'complete_reversal') {
+              setFlowDirection('retrograde');
+            } else if (desc.id === 'absent') {
+              setFlowDirection('absent');
+            } else if (flowDirection === 'not_assessed') {
+              setFlowDirection('antegrade');
+            }
+          } else {
+            if (desc.id === 'absent') {
+              setFlowDirection('absent');
+            } else if (flowDirection === 'not_assessed') {
+              setFlowDirection('antegrade');
+            }
+          }
+          setGuideOpen(false);
+        }}
+      />
     </div>
   );
 };
