@@ -51,12 +51,13 @@ export const CarotidDiagram: React.FC<CarotidDiagramProps> = ({
   // View mode & Label density
   const [focusMode, setFocusMode] = useState<boolean>(true);
   const [labelDensity, setLabelDensity] = useState<'minimal' | 'full' | 'hidden'>('minimal');
+  const [showVelocities, setShowVelocities] = useState<boolean>(true);
 
   // Variant change toast state
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [showOtherModal, setShowOtherModal] = useState<boolean>(false);
   const [customDescription, setCustomDescription] = useState<string>(
-    studyData.anatomyVariants?.otherVariantDescription || ''
+    studyData.anatomyVariants?.otherDescription || ''
   );
 
   const isRightSteal = checkSubclavianSteal('right', studyData);
@@ -126,7 +127,7 @@ export const CarotidDiagram: React.FC<CarotidDiagramProps> = ({
             bifurcationVariant: 'normal',
             isNonStandard: true,
           }),
-          otherVariantDescription: customDescription,
+          otherDescription: customDescription,
         },
       });
     }
@@ -394,61 +395,31 @@ export const CarotidDiagram: React.FC<CarotidDiagramProps> = ({
           </text>
         )}
 
-        {/* Compact Adjacent Numbers (PSV, EDV, Ratio ICA/CCA or ECA/CCA if >50%) */}
-        {velocityPos && hasPsv && (
+        {/* Compact Adjacent Velocity Numbers (PSV/EDV format e.g. 87/20 or 285) */}
+        {showVelocities && velocityPos && hasPsv && (
           <g transform={`translate(${velocityPos.x}, ${velocityPos.y})`} className="select-none" style={{ pointerEvents: 'none' }}>
-            {/* Peak Systolic Velocity */}
             <text
               x={velocityPos.align === 'end' ? -2 : 2}
-              y={-4}
+              y={0}
               textAnchor={velocityPos.align === 'end' ? 'end' : 'start'}
-              className={`text-[9.5px] font-mono font-black ${
+              className={`text-[8.5px] font-mono font-black ${
                 isOccluded ? 'fill-rose-500 font-bold' :
                 isSevere ? 'fill-rose-400 font-black' :
                 isModerate ? 'fill-orange-400 font-black' :
                 isMild ? 'fill-amber-400' :
-                s.psv && s.psv >= 125 ? 'fill-orange-400' : 'fill-emerald-400'
+                s.psv && s.psv >= 125 ? 'fill-orange-400' : 'fill-cyan-300'
               }`}
             >
-              <tspan className="text-[7px] font-sans font-bold fill-slate-500">P </tspan>
               {s.psv}
             </text>
-            
-            {/* End Diastolic Velocity */}
-            <text
-              x={velocityPos.align === 'end' ? -2 : 2}
-              y={4.5}
-              textAnchor={velocityPos.align === 'end' ? 'end' : 'start'}
-              className="text-[8px] font-mono fill-slate-300 font-medium"
-            >
-              <tspan className="text-[6.5px] font-sans fill-slate-500">E </tspan>
-              {s.edv !== null ? s.edv : '-'}
-            </text>
 
-            {/* Display ICA/CCA or ECA/CCA ratio when stenosis >50% or PSV >= 125 */}
-            {showRatio && (
-              <text
-                x={velocityPos.align === 'end' ? -2 : 2}
-                y={13}
-                textAnchor={velocityPos.align === 'end' ? 'end' : 'start'}
-                className="text-[8px] font-mono font-black fill-cyan-300"
-              >
-                <tspan className="text-[6.5px] font-sans font-bold fill-slate-400">
-                  {isEca ? 'E/C ' : 'R '}
-                </tspan>
-                {isEca ? ecaRatio?.toFixed(2) : icaRatio?.toFixed(2)}
-              </text>
-            )}
-
-            {/* Display NASCET % if >50% */}
             {showNascet && nascetVal !== null && (
               <text
                 x={velocityPos.align === 'end' ? -2 : 2}
-                y={showRatio ? 21 : 13}
+                y={9}
                 textAnchor={velocityPos.align === 'end' ? 'end' : 'start'}
-                className="text-[8px] font-mono font-black fill-rose-400"
+                className="text-[7.5px] font-mono font-black fill-rose-400"
               >
-                <tspan className="text-[6.5px] font-sans font-bold fill-slate-400">N </tspan>
                 {Math.round(nascetVal)}%
               </text>
             )}
@@ -551,6 +522,19 @@ export const CarotidDiagram: React.FC<CarotidDiagramProps> = ({
             <Eye className="w-3.5 h-3.5" />
             {focusMode ? 'Carotid Focus' : 'Full Anatomy'}
           </button>
+
+          {/* Velocities Toggle */}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowVelocities(!showVelocities)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border cursor-pointer ${
+                showVelocities ? 'bg-cyan-950 text-cyan-300 border-cyan-800' : 'bg-slate-800 text-slate-400 border-slate-700'
+              }`}
+            >
+              Velocities: {showVelocities ? 'ON' : 'OFF'}
+            </button>
+          </div>
         </div>
       </div>
 

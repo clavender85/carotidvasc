@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { StudyData, SegmentData, PlaqueData, MainTab } from './types';
-import { getInitialStudyData, SAMPLE_CASES, SEGMENTS_META } from './constants';
+import { getInitialStudyData, SEGMENTS_META } from './constants';
+import { getDemoCaseById } from './data/demoCases';
 import { suggestIcaStenosisCategory } from './utils/calculations';
+import { AppHeader } from './components/AppHeader';
 import { ScanWorksheetTab } from './components/ScanWorksheetTab';
 import { PriorComparisonTab } from './components/PriorComparisonTab';
 import { ClinicalReport } from './components/ClinicalReport';
@@ -15,9 +17,6 @@ export default function App() {
   
   // Clean 4-Tab Architecture: 'scan' | 'previous' | 'report' | 'protocol'
   const [activeTab, setActiveTab] = useState<MainTab>('scan');
-  
-  // Sub-view toggle inside SCAN: diagram vs matrix
-  const [assessmentViewMode, setAssessmentViewMode] = useState<'diagram_tree' | 'matrix'>('diagram_tree');
 
   // Multi-select or single select handler
   const handleSelectSegment = (id: string, isMulti: boolean) => {
@@ -36,12 +35,14 @@ export default function App() {
       });
     } else {
       setSelectedSegmentIds(prev => {
-        if (!prev.includes(id)) {
-          return [...prev, id];
+        if (prev.includes(id) && activeSegmentId === id) {
+          setActiveSegmentId(null);
+          return [];
+        } else {
+          setActiveSegmentId(id);
+          return [id];
         }
-        return prev;
       });
-      setActiveSegmentId(id);
     }
   };
 
@@ -261,126 +262,37 @@ export default function App() {
     }
   };
 
-  const loadPreset = (presetName: string) => {
-    const preset = SAMPLE_CASES.find(c => c.name === presetName);
-    if (preset) {
-      const freshData = preset.action(getInitialStudyData());
+  const handleLoadDemoCase = (caseId: string) => {
+    const demoCase = getDemoCaseById(caseId);
+    if (demoCase) {
+      const freshData = demoCase.load();
       setStudyData(freshData);
       setSelectedSegmentIds([]);
+      setActiveTab('scan');
     }
+  };
+
+  const handleExitDemo = () => {
+    setStudyData(getInitialStudyData());
+    setSelectedSegmentIds([]);
+    setActiveTab('scan');
   };
 
   return (
     <div id="carotid-worksheet-app" className="min-h-screen bg-[#080d19] text-slate-100 flex flex-col antialiased font-sans">
       
-      {/* 1. Main Header */}
-      <header className="bg-[#0f172a] border-b border-slate-800 px-5 sm:px-6 py-3.5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 sticky top-0 z-40 shadow-md">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shadow-md shrink-0">
-            <Activity className="w-5 h-5" />
-          </div>
-          <div>
-            <h1 className="text-sm sm:text-base font-extrabold text-slate-100 tracking-tight flex items-center gap-2">
-              CAROTID ARTERIAL DUPLEX WORKSTATION
-              <span className="hidden sm:inline-block px-2 py-0.5 rounded-full bg-cyan-950/50 border border-cyan-800 text-cyan-400 text-[10px] font-bold">
-                CLINICAL SUITE
-              </span>
-            </h1>
-            <p className="text-[11px] text-slate-400 mt-0.5 flex flex-wrap items-center gap-x-2">
-              <span>Patient: <strong className="text-slate-200">{studyData.patientName || 'Unassigned'}</strong></span>
-              <span>•</span>
-              <span>MRN: <strong className="text-slate-200">{studyData.patientId || 'N/A'}</strong></span>
-              <span>•</span>
-              <span>Protocol: <strong className="text-cyan-400">{studyData.classificationSystem.replace('_', ' ')}</strong></span>
-            </p>
-          </div>
-        </div>
+      {/* 1. Main Application Header & Tab Navigation */}
+      <AppHeader
+        studyData={studyData}
+        activeTab={activeTab}
+        onNavigateTab={setActiveTab}
+        onUpdateStudy={handleUpdateStudy}
+        onLoadDemoCase={handleLoadDemoCase}
+        onExitDemo={handleExitDemo}
+      />
 
-        {/* Clinical Presets */}
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-            <Sparkles className="w-3 h-3 text-cyan-400" /> Presets:
-          </span>
-          <div className="flex flex-wrap gap-1.5">
-            {SAMPLE_CASES.map(c => (
-              <button
-                key={c.name}
-                id={`preset-${c.name.replace(/\s+/g, '-').toLowerCase()}`}
-                onClick={() => loadPreset(c.name)}
-                className="px-2.5 py-1 rounded-lg border border-slate-800 bg-[#1e293b] hover:bg-[#2c3e50] text-slate-200 hover:text-white text-xs font-semibold transition-all shadow-sm cursor-pointer"
-                title={c.description}
-              >
-                {c.name.split(' (')[0]}
-              </button>
-            ))}
-          </div>
-        </div>
-      </header>
-
-      {/* 2. Primary 3-Tab Vascular Navigation */}
-      <nav className="bg-[#0b1329] border-b border-slate-800 px-5 sm:px-6 flex items-center gap-1.5 overflow-x-auto shrink-0 sticky top-[69px] z-30 shadow-inner">
-        <button
-          type="button"
-          id="nav-tab-scan"
-          onClick={() => setActiveTab('scan')}
-          className={`flex items-center gap-2.5 px-5 py-3 text-xs font-black uppercase tracking-wider border-b-2 transition-all whitespace-nowrap cursor-pointer ${
-            activeTab === 'scan'
-              ? 'border-cyan-400 text-cyan-400 bg-cyan-950/20 shadow-sm'
-              : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/30'
-          }`}
-        >
-          <Layers className="w-4 h-4" />
-          <span>1. SCAN</span>
-        </button>
-
-        <button
-          type="button"
-          id="nav-tab-previous"
-          onClick={() => setActiveTab('previous')}
-          className={`flex items-center gap-2.5 px-5 py-3 text-xs font-black uppercase tracking-wider border-b-2 transition-all whitespace-nowrap cursor-pointer ${
-            activeTab === 'previous'
-              ? 'border-cyan-400 text-cyan-400 bg-cyan-950/20 shadow-sm'
-              : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/30'
-          }`}
-        >
-          <History className="w-4 h-4" />
-          <span>2. PREVIOUS EXAMINATION</span>
-          {studyData.priorExam?.hasPriorExam && (
-            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
-          )}
-        </button>
-
-        <button
-          type="button"
-          id="nav-tab-report"
-          onClick={() => setActiveTab('report')}
-          className={`flex items-center gap-2.5 px-5 py-3 text-xs font-black uppercase tracking-wider border-b-2 transition-all whitespace-nowrap cursor-pointer ${
-            activeTab === 'report'
-              ? 'border-cyan-400 text-cyan-400 bg-cyan-950/20 shadow-sm'
-              : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/30'
-          }`}
-        >
-          <FileText className="w-4 h-4" />
-          <span>3. STRUCTURED REPORT</span>
-        </button>
-
-        <button
-          type="button"
-          id="nav-tab-protocol"
-          onClick={() => setActiveTab('protocol')}
-          className={`flex items-center gap-2.5 px-5 py-3 text-xs font-black uppercase tracking-wider border-b-2 transition-all whitespace-nowrap cursor-pointer ${
-            activeTab === 'protocol'
-              ? 'border-cyan-400 text-cyan-400 bg-cyan-950/20 shadow-sm'
-              : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/30'
-          }`}
-        >
-          <BookOpen className="w-4 h-4" />
-          <span>4. PROTOCOL</span>
-        </button>
-      </nav>
-
-      {/* 3. Main Workspace Body */}
-      <div className="flex-1 p-4 sm:p-6 space-y-6 max-w-[1600px] w-full mx-auto">
+      {/* 2. Main Workspace Body */}
+      <div className="flex-1 px-4 sm:px-6 py-4 sm:py-6 space-y-6 w-full">
         
         {/* Tab 1: SCAN (Consolidated Primary Scanning Workspace) */}
         {activeTab === 'scan' && (
@@ -388,8 +300,6 @@ export default function App() {
             studyData={studyData}
             selectedSegmentIds={selectedSegmentIds}
             activeSegmentId={activeSegmentId}
-            assessmentViewMode={assessmentViewMode}
-            onSetAssessmentViewMode={setAssessmentViewMode}
             onSelectSegment={handleSelectSegment}
             onSetActiveSegment={handleSetActiveSegment}
             onRemoveSelectedSegment={handleRemoveSelectedSegment}

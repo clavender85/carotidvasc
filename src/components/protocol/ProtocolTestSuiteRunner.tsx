@@ -267,13 +267,13 @@ export const ProtocolTestSuiteRunner: React.FC<ProtocolTestSuiteRunnerProps> = (
               >
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-cyan-300 font-mono">
-                    {log.eventType}
+                    {log.type}
                   </span>
                   <span className="text-slate-200">{log.description}</span>
                 </div>
 
                 <div className="text-right text-[10px] text-slate-400 font-mono shrink-0">
-                  <span>{log.author || 'Sonographer'} • {new Date(log.timestamp).toLocaleTimeString()}</span>
+                  <span>{log.details || 'Sonographer'} • {new Date(log.timestamp).toLocaleTimeString()}</span>
                 </div>
               </div>
             ))}

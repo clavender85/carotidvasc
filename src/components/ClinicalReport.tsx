@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { StudyData, MainTab, ProtocolOverride } from '../types';
-import { generateSideSummary, checkCcaSuitability, generateClinicalImpressionNarrative } from '../utils/calculations';
+import { generateSideSummary, checkCcaSuitability, generateClinicalImpressionNarrative, calculateNascetStenosis } from '../utils/calculations';
 import { validateCarotidStudy, ValidationIssue } from '../utils/validationEngine';
 import { SEGMENTS_META } from '../constants';
 import { getAnatomicalVariationReportSentences, ARCH_VARIANTS_META, BIFURCATION_VARIANTS_META } from '../utils/anatomyVariants';
-import { FileText, Copy, Printer, Check, Clipboard, RefreshCw, AlertTriangle, ChevronRight, Sparkles, ShieldCheck, ShieldAlert, CheckCircle2, UserCheck, AlertCircle, GitBranch, Layers, History, ArrowLeft } from 'lucide-react';
+import { getNormalizedClinicalContext } from '../utils/clinicalContextSummary';
+import { FileText, Copy, Printer, Check, Clipboard, RefreshCw, AlertTriangle, ChevronRight, Sparkles, ShieldCheck, ShieldAlert, CheckCircle2, UserCheck, AlertCircle, GitBranch, Layers, History, ArrowLeft, Stethoscope, Download } from 'lucide-react';
 
 interface ClinicalReportProps {
   studyData: StudyData;
@@ -25,6 +26,7 @@ export const ClinicalReport: React.FC<ClinicalReportProps> = ({
   const leftSummary = generateSideSummary('left', studyData);
   const synthesizedNarrative = generateClinicalImpressionNarrative(studyData);
   const validationIssues = validateCarotidStudy(studyData);
+  const clinicalCtx = getNormalizedClinicalContext(studyData);
 
   const [copied, setCopied] = useState(false);
   const [copiedImpression, setCopiedImpression] = useState(false);
@@ -133,6 +135,9 @@ export const ClinicalReport: React.FC<ClinicalReportProps> = ({
     text += `------------------------------------------------------------------\n`;
     text += `${synthesizedNarrative.overall}\n\n`;
 
+    const rightNascet = calculateNascetStenosis(studyData.nascet.right.longitudinal.minLumenA, studyData.nascet.right.longitudinal.normalLumenB);
+    const leftNascet = calculateNascetStenosis(studyData.nascet.left.longitudinal.minLumenA, studyData.nascet.left.longitudinal.normalLumenB);
+
     text += `HEMODYNAMIC MEASUREMENTS SUMMARY\n`;
     text += `------------------------------------------------------------------\n`;
     text += `RIGHT SYSTEM:\n`;
@@ -142,6 +147,9 @@ export const ClinicalReport: React.FC<ClinicalReportProps> = ({
     text += `  - Corresponding EDV: ${r.correspondingIcaEdv !== null ? r.correspondingIcaEdv + ' cm/s' : 'N/A'}\n`;
     text += `  - Distal CCA PSV: ${r.distalCcaPsv !== null ? r.distalCcaPsv + ' cm/s' : 'N/A'}\n`;
     text += `  - ICA/CCA PSV Ratio: ${r.icaCcaRatio !== null ? r.icaCcaRatio : 'N/A'}\n`;
+    if (rightNascet !== null) {
+      text += `  - NASCET Diameter Reduction: ${rightNascet}%\n`;
+    }
     text += `  - Max Plaque Site: ${r.maxPlaqueLocation || 'None detected'}\n`;
     text += `  - Vertebral Flow: ${r.vertebralFlowDirection.toUpperCase()}\n`;
     text += `  - Subclavian Findings: ${r.subclavianFindings}\n\n`;
@@ -153,6 +161,9 @@ export const ClinicalReport: React.FC<ClinicalReportProps> = ({
     text += `  - Corresponding EDV: ${l.correspondingIcaEdv !== null ? l.correspondingIcaEdv + ' cm/s' : 'N/A'}\n`;
     text += `  - Distal CCA PSV: ${l.distalCcaPsv !== null ? l.distalCcaPsv + ' cm/s' : 'N/A'}\n`;
     text += `  - ICA/CCA PSV Ratio: ${l.icaCcaRatio !== null ? l.icaCcaRatio : 'N/A'}\n`;
+    if (leftNascet !== null) {
+      text += `  - NASCET Diameter Reduction: ${leftNascet}%\n`;
+    }
     text += `  - Max Plaque Site: ${l.maxPlaqueLocation || 'None detected'}\n`;
     text += `  - Vertebral Flow: ${l.vertebralFlowDirection.toUpperCase()}\n`;
     text += `  - Subclavian Findings: ${l.subclavianFindings}\n\n`;
@@ -340,6 +351,23 @@ export const ClinicalReport: React.FC<ClinicalReportProps> = ({
           </div>
         </div>
 
+        {/* DEMO Mode Notice Banner */}
+        {studyData.isDemoMode && (
+          <div className="px-6 py-2.5 bg-amber-950/50 border-b border-amber-700/80 flex items-center justify-between text-xs text-amber-300 print:bg-amber-100 print:text-amber-950 print:border-black">
+            <div className="flex items-center gap-2 font-extrabold uppercase tracking-wider text-xs">
+              <span className="px-1.5 py-0.5 rounded bg-amber-500 text-slate-950 text-[10px] font-black">
+                DEMO
+              </span>
+              <span>DEMONSTRATION REPORT — SAMPLE DATA ONLY — NOT FOR CLINICAL USE</span>
+            </div>
+            {studyData.demoCaseTitle && (
+              <span className="text-[11px] font-semibold text-amber-400/90 hidden sm:inline">
+                Case: {studyData.demoCaseTitle}
+              </span>
+            )}
+          </div>
+        )}
+
         {/* Patient Demographics & Exam Details Banner */}
         <div className="px-6 py-4 bg-[#0f172a]/60 border-b border-slate-800/80 grid grid-cols-2 md:grid-cols-4 gap-4 text-xs text-slate-400 print:bg-white print:border-b-2 print:border-black print:text-black">
           <div>
@@ -386,6 +414,100 @@ export const ClinicalReport: React.FC<ClinicalReportProps> = ({
             </div>
           )}
         </div>
+
+        {/* Clinical Details & Referral Context in Report */}
+        {(clinicalCtx.indications.length > 0 || clinicalCtx.history.length > 0 || clinicalCtx.priorImaging.length > 0 || clinicalCtx.referral?.rawText || clinicalCtx.additionalNotes) && (
+          <div className="px-6 py-4 border-b border-slate-800 bg-[#0a1224]/50 space-y-2.5 print:bg-white print:border-b print:border-gray-300">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Stethoscope className="w-3.5 h-3.5 text-cyan-400 print:hidden" />
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-300 print:text-black">
+                  Clinical Details & Referral Context
+                </span>
+              </div>
+              {clinicalCtx.referral?.source === 'electronic_referral' && (
+                <span className="flex items-center gap-1 text-[9px] px-2 py-0.5 rounded bg-cyan-950/80 border border-cyan-800 text-cyan-300 font-mono print:border-black print:text-black">
+                  <Download className="w-2.5 h-2.5 print:hidden" />
+                  Imported Referral {clinicalCtx.referral.sourceId ? `(${clinicalCtx.referral.sourceId})` : ''}
+                </span>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
+              {/* Indications */}
+              {clinicalCtx.indications.length > 0 && (
+                <div className="p-2.5 bg-[#0d162f]/80 border border-slate-800/80 rounded-lg space-y-1 print:bg-white print:border">
+                  <span className="text-[9px] font-bold text-slate-500 uppercase block tracking-wider print:text-black">
+                    Clinical Indications
+                  </span>
+                  <div className="flex flex-wrap gap-1">
+                    {clinicalCtx.indications.map((ind) => (
+                      <span key={ind.id} className="text-[11px] font-medium text-cyan-200 bg-cyan-950/40 px-1.5 py-0.5 rounded border border-cyan-800/40 print:text-black print:border-black print:bg-gray-100">
+                        {ind.label}
+                      </span>
+                    ))}
+                  </div>
+                  {clinicalCtx.conditionalAnswers?.symptomSide && (
+                    <div className="text-[10px] text-slate-400 font-mono mt-1 print:text-black">
+                      Side: <strong className="text-slate-200 uppercase print:text-black">{clinicalCtx.conditionalAnswers.symptomSide}</strong>
+                      {clinicalCtx.conditionalAnswers.symptomOnset && ` • Onset: ${clinicalCtx.conditionalAnswers.symptomOnset}`}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* History */}
+              {clinicalCtx.history.length > 0 && (
+                <div className="p-2.5 bg-[#0d162f]/80 border border-slate-800/80 rounded-lg space-y-1 print:bg-white print:border">
+                  <span className="text-[9px] font-bold text-slate-500 uppercase block tracking-wider print:text-black">
+                    Relevant Medical / Vascular History
+                  </span>
+                  <div className="flex flex-wrap gap-1">
+                    {clinicalCtx.history.map((hist) => (
+                      <span key={hist.id} className="text-[11px] font-medium text-slate-300 bg-slate-800/60 px-1.5 py-0.5 rounded border border-slate-700/50 print:text-black print:border-black print:bg-gray-100">
+                        {hist.label}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Prior Imaging & Procedures */}
+              {clinicalCtx.priorImaging.length > 0 && (
+                <div className="p-2.5 bg-[#0d162f]/80 border border-slate-800/80 rounded-lg space-y-1 print:bg-white print:border">
+                  <span className="text-[9px] font-bold text-slate-500 uppercase block tracking-wider print:text-black">
+                    Prior Imaging & Procedures
+                  </span>
+                  <div className="space-y-1">
+                    {clinicalCtx.priorImaging.map((img) => (
+                      <div key={img.id} className="text-[11px] text-slate-300 print:text-black">
+                        <span className="font-semibold text-slate-200 print:text-black">{img.label}</span>
+                        {img.date && <span className="text-slate-400 font-mono text-[10px]"> ({img.date})</span>}
+                        {img.detail && <span className="text-slate-400 block text-[10px] italic"> {img.detail}</span>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Original Referral Text Quote */}
+            {clinicalCtx.referral?.rawText && (
+              <div className="text-[11px] text-slate-400 italic bg-[#080e1e] p-2 rounded-lg border border-slate-800 print:bg-gray-50 print:border print:border-black print:text-black">
+                <span className="font-semibold text-slate-400 not-italic uppercase text-[9px] mr-1 print:text-black">Referral:</span>
+                "{clinicalCtx.referral.rawText}"
+              </div>
+            )}
+
+            {/* Additional Clinical Notes */}
+            {clinicalCtx.additionalNotes && (
+              <div className="text-[11px] text-slate-300 bg-[#080e1e] p-2 rounded-lg border border-slate-800 print:bg-gray-50 print:border print:border-black print:text-black">
+                <span className="font-semibold text-slate-400 uppercase text-[9px] mr-1 print:text-black">Clinical Notes:</span>
+                {clinicalCtx.additionalNotes}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Synthesized Impression Card */}
         <div className="p-6 border-b border-slate-800 bg-[#0d1527]/50 space-y-3 print:bg-white print:border-b print:border-gray-300">

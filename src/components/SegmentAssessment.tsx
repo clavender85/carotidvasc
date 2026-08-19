@@ -1,761 +1,1268 @@
-import React, { useState, useEffect } from 'react';
-import { StudyData, SegmentData, FlowDirection } from '../types';
+import React, { useState, useEffect, useMemo } from 'react';
+import { StudyData, SegmentData, FlowDirection, PlaqueData, PlaqueComposition, PlaqueSurface, CalcificShadowing } from '../types';
 import { SEGMENTS_META } from '../constants';
-import { calculateLocalPsvRatio, findUpstreamNormalSegment } from '../utils/calculations';
-import { Check, ClipboardList, Info, ShieldAlert, Sliders, Save, Plus, HelpCircle, Activity } from 'lucide-react';
 import { 
-  getWaveformOptionsForVessel, 
-  findWaveformDescriptor, 
-  VesselCategory, 
-  WaveformDescriptor,
-  WAVEFORM_DESCRIPTORS 
-} from '../data/waveformDescriptors';
-import { WaveformDescriptorGuide } from './WaveformDescriptorGuide';
-import { WaveformHoverCard } from './WaveformHoverCard';
+  suggestIcaStenosisCategory, 
+  getPeakIcaMeasurements, 
+  calculateIcaCcaRatio, 
+  calculateNascetStenosis, 
+  checkCcaSuitability 
+} from '../utils/calculations';
+import { 
+  Activity, 
+  Check, 
+  ShieldAlert, 
+  Layers, 
+  Sliders, 
+  X, 
+  MoreHorizontal, 
+  ExternalLink,
+  CheckCircle2
+} from 'lucide-react';
 
 interface SegmentAssessmentProps {
   studyData: StudyData;
   selectedIds: string[];
   activeId: string | null;
+  onSelectSegment?: (id: string, isMulti: boolean) => void;
   onSetActiveSegment: (id: string) => void;
   onRemoveSelectedSegment: (id: string) => void;
   onUpdateSegment: (id: string, updates: Partial<SegmentData>) => void;
-  onUpdateSegmentsBulk: (ids: string[], updates: Partial<SegmentData>) => void;
-  onAddPlaqueFromSegments: (ids: string[]) => void;
+  onUpdateSegmentsBulk?: (ids: string[], updates: Partial<SegmentData>) => void;
+  onAddPlaqueFromSegments?: (ids: string[]) => void;
+  onAddPlaque?: (plaque: PlaqueData) => void;
+  onUpdateStudy?: (updates: Partial<StudyData>) => void;
+  onOpenNascet: (side: 'right' | 'left') => void;
+}
+
+// Groupings for structured anatomy
+interface VesselGroup {
+  name: string;
+  vesselKey: string;
+  side: 'right' | 'left';
+  segmentIds: string[];
 }
 
 export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
   studyData,
   selectedIds,
   activeId,
+  onSelectSegment,
   onSetActiveSegment,
   onRemoveSelectedSegment,
   onUpdateSegment,
   onUpdateSegmentsBulk,
-  onAddPlaqueFromSegments,
+  onAddPlaque,
+  onUpdateStudy,
+  onOpenNascet,
 }) => {
-  const currentId = (activeId && selectedIds.includes(activeId)) ? activeId : selectedIds[0];
+  // Tab state
+  const [activeSideTab, setActiveSideTab] = useState<'right' | 'left' | 'bilateral'>('right');
+  
+  // Drawer / Popover for advanced details (when '⋯' is clicked)
+  const [advancedDrawerSegmentId, setAdvancedDrawerSegmentId] = useState<string | null>(null);
 
-  // Local transient states for form
-  const [psv, setPsv] = useState<string>('');
-  const [edv, setEdv] = useState<string>('');
-  const [flowDirection, setFlowDirection] = useState<FlowDirection>('not_assessed');
-  const [waveform, setWaveform] = useState<string>('Not assessed');
-  const [plaquePresent, setPlaquePresent] = useState<boolean>(false);
-  const [intimalThickening, setIntimalThickening] = useState<boolean>(false);
-  const [stenosisPresent, setStenosisPresent] = useState<boolean>(false);
-  const [comments, setComments] = useState<string>('');
-  const [techLimits, setTechLimits] = useState<string>('');
-  const [refOverrideId, setRefOverrideId] = useState<string>('auto');
-
-  // 3-point hemodynamic velocities
-  const [preStenosisPsv, setPreStenosisPsv] = useState<string>('');
-  const [atStenosisPsv, setAtStenosisPsv] = useState<string>('');
-  const [postStenosisPsv, setPostStenosisPsv] = useState<string>('');
-
-  // Waveform reference guide state
-  const [guideOpen, setGuideOpen] = useState(false);
-  const [guideInitialDescriptor, setGuideInitialDescriptor] = useState<string | undefined>(undefined);
-
-  // Bulk mode checkbox overrides
-  const [applyPsv, setApplyPsv] = useState(false);
-  const [applyEdv, setApplyEdv] = useState(false);
-  const [applyFlow, setApplyFlow] = useState(true);
-  const [applyWave, setApplyWave] = useState(true);
-  const [applyPlaque, setApplyPlaque] = useState(true);
-  const [applyImt, setApplyImt] = useState(true);
-  const [applyStenosis, setApplyStenosis] = useState(true);
-  const [applyComments, setApplyComments] = useState(false);
-
-  // Load data from study state when currentId changes
+  // Synchronize tab with selected segment if active
   useEffect(() => {
-    if (currentId) {
-      const active = studyData.segments[currentId];
-      if (active) {
-        setPsv(active.psv !== null ? active.psv.toString() : '');
-        setEdv(active.edv !== null ? active.edv.toString() : '');
-        setFlowDirection(active.flowDirection);
-        setWaveform(active.waveform || 'Not assessed');
-        setPlaquePresent(active.plaquePresent);
-        setIntimalThickening(active.intimalThickening);
-        setStenosisPresent(active.stenosisPresent);
-        setComments(active.comments || '');
-        setTechLimits(active.technicalLimitations || '');
-        setRefOverrideId(active.localRatioReferenceOverrideId || 'auto');
-        
-        // Load 3-point hemodynamics
-        setPreStenosisPsv(active.preStenosisPsv !== null && active.preStenosisPsv !== undefined ? active.preStenosisPsv.toString() : '');
-        setAtStenosisPsv(active.atStenosisPsv !== null && active.atStenosisPsv !== undefined ? active.atStenosisPsv.toString() : active.psv !== null ? active.psv.toString() : '');
-        setPostStenosisPsv(active.postStenosisPsv !== null && active.postStenosisPsv !== undefined ? active.postStenosisPsv.toString() : '');
+    if (activeId) {
+      const meta = SEGMENTS_META[activeId];
+      if (meta && activeSideTab !== 'bilateral') {
+        if (meta.side === 'right' || meta.side === 'left') {
+          if (meta.side !== activeSideTab) {
+            setActiveSideTab(meta.side);
+          }
+        }
+      }
+      // Scroll corresponding row into view smoothly
+      const rowEl = document.getElementById(`worksheet-row-${activeId}`);
+      if (rowEl) {
+        rowEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       }
     }
-  }, [currentId, studyData]);
+  }, [activeId]);
 
-  if (selectedIds.length === 0) {
-    return (
-      <div id="no-segment-selected" className="bg-[#0b1329] border border-slate-800 rounded-xl p-8 text-center flex flex-col items-center justify-center h-full min-h-[380px]">
-        <div className="w-12 h-12 rounded-full bg-[#0f172a] flex items-center justify-center border border-slate-800 mb-4 text-slate-500">
-          <ClipboardList className="w-6 h-6" />
-        </div>
-        <h3 className="text-xs font-black text-slate-200 uppercase tracking-wider">No Segment Selected</h3>
-        <p className="text-xs text-slate-500 max-w-[280px] mt-1.5 leading-relaxed">
-          Select one or multiple segments on the diagram or bilateral matrix to view and record segment parameters.
-        </p>
-      </div>
-    );
-  }
+  // Define segments for Right and Left
+  const rightSegmentIds = [
+    'r_subcl_prox', 'r_subcl_dist',
+    'r_vert_prox', 'r_vert_mid', 'r_vert_dist',
+    'r_cca_prox', 'r_cca_mid', 'r_cca_dist',
+    'r_bulb',
+    'r_ica_prox', 'r_ica_mid', 'r_ica_dist',
+    'r_eca_prox', 'r_eca_dist'
+  ];
 
-  const isBulk = selectedIds.length > 1;
+  const leftSegmentIds = [
+    'l_subcl_prox', 'l_subcl_dist',
+    'l_vert_prox', 'l_vert_mid', 'l_vert_dist',
+    'l_cca_prox', 'l_cca_mid', 'l_cca_dist',
+    'l_bulb',
+    'l_ica_prox', 'l_ica_mid', 'l_ica_dist',
+    'l_eca_prox', 'l_eca_dist'
+  ];
 
-  // Save changes
-  const handleSave = () => {
-    const parseNum = (val: string): number | null => {
-      const num = parseFloat(val);
-      return isNaN(num) ? null : num;
-    };
+  // Define vessel groups for clean header summaries
+  const vesselGroups: VesselGroup[] = useMemo(() => {
+    const sides: ('right' | 'left')[] = activeSideTab === 'bilateral' ? ['right', 'left'] : [activeSideTab];
+    const groups: VesselGroup[] = [];
 
-    const updates: Partial<SegmentData> = {
-      flowDirection,
-      waveform,
-      plaquePresent,
-      intimalThickening,
-      stenosisPresent,
-      comments,
-      technicalLimitations: techLimits,
-      preStenosisPsv: parseNum(preStenosisPsv),
-      atStenosisPsv: parseNum(atStenosisPsv),
-      postStenosisPsv: parseNum(postStenosisPsv),
-    };
+    sides.forEach(side => {
+      const prefix = side === 'right' ? 'r_' : 'l_';
+      const sideLabel = side === 'right' ? 'Right' : 'Left';
 
-    if (!isBulk) {
-      // Single segment updates
-      onUpdateSegment(selectedIds[0], {
-        ...updates,
-        psv: parseNum(psv),
-        edv: parseNum(edv),
-        localRatioReferenceOverrideId: refOverrideId === 'auto' ? null : refOverrideId,
+      groups.push({
+        name: `${sideLabel} Subclavian Artery`,
+        vesselKey: 'subclavian',
+        side,
+        segmentIds: [`${prefix}subcl_prox`, `${prefix}subcl_dist`]
       });
-    } else {
-      // Bulk segment updates based on checkboxes
-      const bulkUpdates: Partial<SegmentData> = {};
-      if (applyPsv) bulkUpdates.psv = parseNum(psv);
-      if (applyEdv) bulkUpdates.edv = parseNum(edv);
-      if (applyFlow) bulkUpdates.flowDirection = flowDirection;
-      if (applyWave) bulkUpdates.waveform = waveform;
-      if (applyPlaque) bulkUpdates.plaquePresent = plaquePresent;
-      if (applyImt) bulkUpdates.intimalThickening = intimalThickening;
-      if (applyStenosis) bulkUpdates.stenosisPresent = stenosisPresent;
-      if (applyComments) {
-        bulkUpdates.comments = comments;
-        bulkUpdates.technicalLimitations = techLimits;
-      }
 
-      onUpdateSegmentsBulk(selectedIds, bulkUpdates);
-    }
+      groups.push({
+        name: `${sideLabel} Vertebral Artery`,
+        vesselKey: 'vertebral',
+        side,
+        segmentIds: [`${prefix}vert_prox`, `${prefix}vert_mid`, `${prefix}vert_dist`]
+      });
+
+      groups.push({
+        name: `${sideLabel} Common Carotid (CCA)`,
+        vesselKey: 'cca',
+        side,
+        segmentIds: [`${prefix}cca_prox`, `${prefix}cca_mid`, `${prefix}cca_dist`]
+      });
+
+      groups.push({
+        name: `${sideLabel} Carotid Bulb`,
+        vesselKey: 'bulb',
+        side,
+        segmentIds: [`${prefix}bulb`]
+      });
+
+      groups.push({
+        name: `${sideLabel} Internal Carotid (ICA)`,
+        vesselKey: 'ica',
+        side,
+        segmentIds: [`${prefix}ica_prox`, `${prefix}ica_mid`, `${prefix}ica_dist`]
+      });
+
+      groups.push({
+        name: `${sideLabel} External Carotid (ECA)`,
+        vesselKey: 'eca',
+        side,
+        segmentIds: [`${prefix}eca_prox`, `${prefix}eca_dist`]
+      });
+    });
+
+    return groups;
+  }, [activeSideTab]);
+
+  // Hemodynamic calculations per side
+  const rIcaPeak = useMemo(() => getPeakIcaMeasurements('right', studyData), [studyData]);
+  const lIcaPeak = useMemo(() => getPeakIcaMeasurements('left', studyData), [studyData]);
+
+  const rIcaCcaRatio = useMemo(() => calculateIcaCcaRatio('right', studyData), [studyData]);
+  const lIcaCcaRatio = useMemo(() => calculateIcaCcaRatio('left', studyData), [studyData]);
+
+  const rCcaRefVal = studyData.segments['r_cca_dist']?.psv ?? null;
+  const lCcaRefVal = studyData.segments['l_cca_dist']?.psv ?? null;
+
+  // Vertebral state summary
+  const getVertSummary = (side: 'right' | 'left') => {
+    const prefix = side === 'right' ? 'r_' : 'l_';
+    const p = studyData.segments[`${prefix}vert_prox`];
+    const m = studyData.segments[`${prefix}vert_mid`];
+    const d = studyData.segments[`${prefix}vert_dist`];
+    const anyRetro = [p, m, d].some(s => s?.flowDirection === 'retrograde' || s?.waveform?.toLowerCase().includes('retrograde') || s?.waveform?.toLowerCase().includes('reversal'));
+    const anySteal = [p, m, d].some(s => s?.flowDirection === 'bidirectional' || s?.waveform?.toLowerCase().includes('steal') || s?.waveform?.toLowerCase().includes('deceleration') || s?.waveform?.toLowerCase().includes('bunny'));
+    if (anyRetro) return { text: '⚠ Retrograde / Reversal', isAbnormal: true };
+    if (anySteal) return { text: '⚠ Pre-Steal / Bidirectional', isAbnormal: true };
+    return { text: 'Antegrade Flow', isAbnormal: false };
   };
 
-  const handleMarkNormal = () => {
-    const normalUpdates: Partial<SegmentData> = {
-      flowDirection: 'antegrade',
-      waveform: 'Normal',
-      plaquePresent: false,
-      intimalThickening: false,
-      stenosisPresent: false,
-      comments: '',
-      technicalLimitations: '',
-      preStenosisPsv: null,
-      atStenosisPsv: null,
-      postStenosisPsv: null,
-    };
+  // Group Header Summary Generator
+  const getGroupSummary = (group: VesselGroup) => {
+    const side = group.side;
+    if (group.vesselKey === 'cca') {
+      const refVal = side === 'right' ? rCcaRefVal : lCcaRefVal;
+      return refVal ? `REF PSV ${refVal}` : 'Distal CCA Ref';
+    }
+    if (group.vesselKey === 'ica') {
+      const peak = side === 'right' ? rIcaPeak : lIcaPeak;
+      const ratio = side === 'right' ? rIcaCcaRatio : lIcaCcaRatio;
+      const nascetCalc = side === 'right' ? studyData.nascetRight : studyData.nascetLeft;
+      const nascetPct = nascetCalc?.calculatedPercent ? Math.round(nascetCalc.calculatedPercent) : null;
+      
+      const suggestedResult = suggestIcaStenosisCategory(side, studyData);
+      const suggestedCategory = suggestedResult?.category || '';
+      const isSevere = suggestedCategory.includes('70%') || suggestedCategory.includes('50-69%') || suggestedCategory.includes('Near') || suggestedCategory.includes('Occlusion');
 
-    if (!isBulk) {
-      const id = selectedIds[0];
-      const meta = SEGMENTS_META[id];
-      let standardPsv = 70;
-      let standardEdv = 18;
+      const parts: string[] = [];
+      if (suggestedCategory && !suggestedCategory.includes('Normal') && !suggestedCategory.includes('<50%') && !suggestedCategory.includes('mild')) {
+        parts.push(suggestedCategory.split('(')[0].trim());
+      }
+      if (peak.psv) {
+        parts.push(`MAX PSV ${peak.psv}`);
+      }
+      if (ratio && ratio.ratio) {
+        parts.push(`RATIO ${ratio.ratio.toFixed(2)}`);
+      }
+      if (nascetPct !== null) {
+        parts.push(`NASCET ${nascetPct}%`);
+      }
 
-      if (meta?.type === 'cca') { standardPsv = 75; standardEdv = 18; }
-      else if (meta?.type === 'ica') { standardPsv = 68; standardEdv = 22; }
-      else if (meta?.type === 'eca') { standardPsv = 70; standardEdv = 12; }
-      else if (meta?.type === 'bulb') { standardPsv = 60; standardEdv = 15; }
-      else if (meta?.type === 'vertebral') { standardPsv = 45; standardEdv = 12; }
-      else if (meta?.type === 'subclavian' || meta?.type === 'bct') { standardPsv = 95; standardEdv = 10; normalUpdates.waveform = 'Normal Triphasic'; }
+      return parts.length > 0 ? parts.join(' | ') : 'Normal Low Resistance';
+    }
+    if (group.vesselKey === 'vertebral') {
+      const vert = getVertSummary(side);
+      return vert.text;
+    }
+    if (group.vesselKey === 'subclavian') {
+      const prox = studyData.segments[`${side === 'right' ? 'r_' : 'l_'}subcl_prox`];
+      const dist = studyData.segments[`${side === 'right' ? 'r_' : 'l_'}subcl_dist`];
+      if ((prox?.psv && prox.psv > 150) || (dist?.psv && dist.psv > 150)) {
+        return '⚠ High Velocity Jet';
+      }
+      return 'Multiphasic Flow';
+    }
+    if (group.vesselKey === 'bulb') {
+      const bulbSeg = studyData.segments[`${side === 'right' ? 'r_' : 'l_'}bulb`];
+      const plaque = studyData.plaques.find(p => p.segments.includes(`${side === 'right' ? 'r_' : 'l_'}bulb`));
+      if (bulbSeg?.plaquePresent) {
+        return `Plaque: ${plaque?.luminalNarrowingVisible || 'Present'}`;
+      }
+      return 'Flow Separation';
+    }
+    if (group.vesselKey === 'eca') {
+      const ecaProx = studyData.segments[`${side === 'right' ? 'r_' : 'l_'}eca_prox`];
+      if (ecaProx?.psv && ecaProx.psv > 150) {
+        return `PSV ${ecaProx.psv} | High Resistance`;
+      }
+      return 'High Resistance';
+    }
+    return '';
+  };
+
+  // Vessel-specific Waveform Options
+  const getWaveformOptionsForSegment = (segmentId: string): string[] => {
+    if (segmentId.includes('subcl')) {
+      return [
+        'Multiphasic',
+        'Biphasic',
+        'Monophasic',
+        'Dampened',
+        'Turbulent / high velocity',
+        'Tardus-parvus',
+        'Absent',
+        'Not assessed'
+      ];
+    }
+    if (segmentId.includes('vert')) {
+      return [
+        'Normal antegrade',
+        'Early systolic deceleration',
+        'Bunny / pre-steal',
+        'Bidirectional / partial steal',
+        'Retrograde / complete reversal',
+        'High resistance',
+        'Dampened',
+        'Absent',
+        'Not assessed'
+      ];
+    }
+    if (segmentId.includes('cca')) {
+      return [
+        'Normal',
+        'High resistance',
+        'Low resistance',
+        'Tardus-parvus',
+        'Dampened',
+        'Turbulent',
+        'Absent',
+        'Not assessed'
+      ];
+    }
+    if (segmentId.includes('bulb')) {
+      return [
+        'Normal boundary layer separation',
+        'Disturbed / swirling flow',
+        'Turbulent / high velocity',
+        'Dampened',
+        'Absent',
+        'Not assessed'
+      ];
+    }
+    if (segmentId.includes('ica')) {
+      return [
+        'Normal low resistance',
+        'Turbulent / high velocity',
+        'Tardus-parvus',
+        'Dampened',
+        'Very low flow',
+        'Pre-occlusive / terminal pattern',
+        'Absent',
+        'Not assessed'
+      ];
+    }
+    if (segmentId.includes('eca')) {
+      return [
+        'Normal high resistance',
+        'Positive temporal tap',
+        'Low resistance (internalized/collateral)',
+        'Turbulent / high velocity',
+        'Absent',
+        'Not assessed'
+      ];
+    }
+    return ['Normal', 'Dampened', 'Turbulent', 'Tardus-parvus', 'Absent', 'Not assessed'];
+  };
+
+  // Stenosis dropdown options
+  const getStenosisOptionsForSegment = (segmentId: string): { label: string; value: string }[] => {
+    if (segmentId.includes('ica')) {
+      return [
+        { label: 'None', value: 'normal' },
+        { label: '<50%', value: '<50%' },
+        { label: '50–69%', value: '50-69%' },
+        { label: '≥70%', value: '>=70%' },
+        { label: 'Near occlusion', value: 'near_occlusion' },
+        { label: 'Occluded', value: 'occluded' },
+        { label: 'Indeterminate', value: 'indeterminate' }
+      ];
+    }
+    return [
+      { label: 'None', value: 'normal' },
+      { label: '<50%', value: '<50%' },
+      { label: '50–69%', value: '50-69%' },
+      { label: '≥70%', value: '>=70%' },
+      { label: 'Occluded', value: 'occluded' },
+      { label: 'Indeterminate', value: 'indeterminate' }
+    ];
+  };
+
+  // Helper to determine plaque label for segment
+  const getSegmentPlaqueSeverity = (segId: string): 'none' | 'mild' | 'moderate' | 'severe' => {
+    const seg = studyData.segments[segId];
+    if (!seg || !seg.plaquePresent) return 'none';
+    const plaque = studyData.plaques.find(p => p.segments.includes(segId));
+    if (!plaque) return 'mild';
+    const narrow = plaque.luminalNarrowingVisible?.toLowerCase() || '';
+    if (narrow.includes('severe') || narrow.includes('70') || (plaque.maxThicknessMm && plaque.maxThicknessMm >= 2.5)) return 'severe';
+    if (narrow.includes('moderate') || narrow.includes('50') || (plaque.maxThicknessMm && plaque.maxThicknessMm >= 1.5)) return 'moderate';
+    return 'mild';
+  };
+
+  // Helper to determine stenosis label for segment
+  const getSegmentStenosisGrade = (segId: string): string => {
+    const seg = studyData.segments[segId];
+    if (!seg || !seg.stenosisPresent) return 'normal';
+    if (seg.comments?.includes('>=70%') || seg.comments?.includes('70-99')) return '>=70%';
+    if (seg.comments?.includes('50-69%')) return '50-69%';
+    if (seg.comments?.includes('<50%')) return '<50%';
+    if (seg.comments?.includes('near_occlusion')) return 'near_occlusion';
+    if (seg.comments?.includes('occluded') || seg.flowDirection === 'absent') return 'occluded';
+    return '50-69%';
+  };
+
+  // Handle PSV change
+  const handlePsvChange = (id: string, valueStr: string) => {
+    const num = valueStr.trim() === '' ? null : parseFloat(valueStr);
+    const validNum = num !== null && !isNaN(num) && num >= 0 ? num : null;
+    
+    let updates: Partial<SegmentData> = { psv: validNum };
+
+    if (id.includes('ica') && validNum !== null) {
+      if (validNum >= 125) {
+        updates.stenosisPresent = true;
+      }
+    }
+
+    onUpdateSegment(id, updates);
+  };
+
+  // Handle EDV change
+  const handleEdvChange = (id: string, valueStr: string) => {
+    const num = valueStr.trim() === '' ? null : parseFloat(valueStr);
+    const validNum = num !== null && !isNaN(num) && num >= 0 ? num : null;
+    onUpdateSegment(id, { edv: validNum });
+  };
+
+  // Handle Waveform change
+  const handleWaveformChange = (id: string, waveformVal: string) => {
+    let updates: Partial<SegmentData> = { waveform: waveformVal };
+    
+    // If vertebral, synchronize flowDirection
+    if (id.includes('vert')) {
+      if (waveformVal.toLowerCase().includes('retrograde') || waveformVal.toLowerCase().includes('reversal')) {
+        updates.flowDirection = 'retrograde';
+      } else if (waveformVal.toLowerCase().includes('bidirectional') || waveformVal.toLowerCase().includes('steal') || waveformVal.toLowerCase().includes('deceleration') || waveformVal.toLowerCase().includes('bunny')) {
+        updates.flowDirection = 'bidirectional';
+      } else if (waveformVal.toLowerCase().includes('absent')) {
+        updates.flowDirection = 'absent';
+      } else if (waveformVal.toLowerCase().includes('antegrade')) {
+        updates.flowDirection = 'antegrade';
+      }
+    }
+
+    onUpdateSegment(id, updates);
+  };
+
+  // Handle Plaque change
+  const handlePlaqueChange = (id: string, plaqueVal: string) => {
+    const meta = SEGMENTS_META[id];
+    const side = meta?.side === 'left' ? 'left' : 'right';
+    
+    if (plaqueVal === 'none' || plaqueVal === 'None') {
+      onUpdateSegment(id, {
+        plaquePresent: false
+      });
+      // Remove from plaques list if single segment
+      const existingPlaques = studyData.plaques.filter(p => !p.segments.includes(id));
+      if (onUpdateStudy) {
+        onUpdateStudy({ plaques: existingPlaques });
+      }
+    } else {
+      const severity = plaqueVal.toLowerCase() as 'mild' | 'moderate' | 'severe';
+      const existingPlaque = studyData.plaques.find(p => p.segments.includes(id));
+      
+      const thickness = severity === 'severe' ? 3.0 : severity === 'moderate' ? 2.0 : 1.2;
+      const narrowing = severity === 'severe' ? 'Severe luminal encroachment (≥70%)' : severity === 'moderate' ? 'Moderate luminal narrowing (50–69%)' : 'Mild wall thickening (<50%)';
+
+      if (!existingPlaque) {
+        const newPlaqueId = `plaque_${id}_${Date.now()}`;
+        const newPlaque: PlaqueData = {
+          id: newPlaqueId,
+          segments: [id],
+          locationDescription: meta?.name || id,
+          maxPlaqueSite: id,
+          maxThicknessMm: thickness,
+          composition: 'homogeneous_fibrous',
+          surface: 'smooth',
+          calcificShadowing: 'none',
+          luminalNarrowingVisible: narrowing,
+          freeTextDescription: `${severity.toUpperCase()} atheroma at ${meta?.name || id}`
+        };
+        if (onAddPlaque) {
+          onAddPlaque(newPlaque);
+        } else if (onUpdateStudy) {
+          onUpdateStudy({ plaques: [...studyData.plaques, newPlaque] });
+        }
+      } else {
+        const updated = studyData.plaques.map(p => p.id === existingPlaque.id ? { 
+          ...p, 
+          maxThicknessMm: thickness,
+          luminalNarrowingVisible: narrowing 
+        } : p);
+        if (onUpdateStudy) {
+          onUpdateStudy({ plaques: updated });
+        }
+      }
 
       onUpdateSegment(id, {
-        ...normalUpdates,
-        psv: standardPsv,
-        edv: standardEdv,
-        localRatioReferenceOverrideId: null
+        plaquePresent: true
       });
-    } else {
-      onUpdateSegmentsBulk(selectedIds, normalUpdates);
     }
   };
 
-  const targetSegmentId = currentId;
-  const isVertebral = targetSegmentId && SEGMENTS_META[targetSegmentId]?.type === 'vertebral';
-  const targetMeta = targetSegmentId ? SEGMENTS_META[targetSegmentId] : null;
-  const vesselCategory: VesselCategory = (targetMeta?.type as VesselCategory) || (isVertebral ? 'vertebral' : 'ica');
-  const vesselWaveformOptions = getWaveformOptionsForVessel(vesselCategory);
-  const activeDescriptor = findWaveformDescriptor(waveform, vesselCategory);
+  // Handle Stenosis change
+  const handleStenosisChange = (id: string, stenosisVal: string) => {
+    const isPresent = stenosisVal !== 'normal' && stenosisVal !== 'None' && stenosisVal !== 'none';
+    onUpdateSegment(id, { 
+      stenosisPresent: isPresent,
+      comments: isPresent ? `Stenosis grade: ${stenosisVal}` : ''
+    });
+  };
 
-  // For Local Ratio computation
-  const localRatioData = targetSegmentId ? calculateLocalPsvRatio(targetSegmentId, studyData) : null;
-  const autoUpstreamRef = targetSegmentId ? findUpstreamNormalSegment(targetSegmentId, studyData) : null;
+  // Row selection handler (toggles selection & highlights map)
+  const handleRowClick = (id: string) => {
+    if (selectedIds.includes(id)) {
+      onRemoveSelectedSegment(id);
+    } else {
+      onSetActiveSegment(id);
+      if (onSelectSegment) {
+        onSelectSegment(id, false);
+      }
+    }
+  };
 
-  // Get segments on the same side with registered PSV for manual reference override dropdown
-  const sameSideSegmentsWithPsv = targetSegmentId ? (Object.values(studyData.segments) as SegmentData[]).filter(s => 
-    s.id !== targetSegmentId && 
-    s.side === studyData.segments[targetSegmentId]?.side && 
-    s.psv !== null && 
-    s.psv > 0
-  ) : [];
+  // Mark active side normal
+  const handleMarkSideNormal = (side: 'right' | 'left') => {
+    const ids = side === 'right' ? rightSegmentIds : leftSegmentIds;
+    ids.forEach(id => {
+      onUpdateSegment(id, {
+        psv: id.includes('cca') ? 70 : id.includes('ica') ? 65 : id.includes('eca') ? 75 : id.includes('vert') ? 45 : 95,
+        edv: id.includes('ica') ? 22 : id.includes('cca') ? 18 : id.includes('eca') ? 14 : id.includes('vert') ? 12 : 10,
+        waveform: id.includes('subcl') ? 'Multiphasic' : id.includes('vert') ? 'Normal antegrade' : id.includes('ica') ? 'Normal low resistance' : id.includes('eca') ? 'Normal high resistance' : 'Normal',
+        flowDirection: 'antegrade',
+        plaquePresent: false,
+        stenosisPresent: false,
+        comments: ''
+      });
+    });
+
+    // Clean plaques for this side
+    if (onUpdateStudy) {
+      const remainingPlaques = studyData.plaques.filter(p => !p.segments.some(segId => ids.includes(segId)));
+      onUpdateStudy({ plaques: remainingPlaques });
+    }
+  };
+
+  // Key Findings calculation for the footer summary
+  const keyFindings = useMemo(() => {
+    const findings: { id: string; text: string; type: 'severe' | 'moderate' | 'warning' | 'info' }[] = [];
+    const checkSides: ('right' | 'left')[] = activeSideTab === 'bilateral' ? ['right', 'left'] : [activeSideTab];
+
+    checkSides.forEach(side => {
+      const sidePrefix = side === 'right' ? 'r_' : 'l_';
+      const sideName = side === 'right' ? 'Right' : 'Left';
+
+      // 1. ICA Stenosis
+      const peak = side === 'right' ? rIcaPeak : lIcaPeak;
+      const ratio = side === 'right' ? rIcaCcaRatio : lIcaCcaRatio;
+      const nascetCalc = side === 'right' ? studyData.nascetRight : studyData.nascetLeft;
+      const nascetPct = nascetCalc?.calculatedPercent ? Math.round(nascetCalc.calculatedPercent) : null;
+
+      const icaProx = studyData.segments[`${sidePrefix}ica_prox`];
+      const icaMid = studyData.segments[`${sidePrefix}ica_mid`];
+      const icaDist = studyData.segments[`${sidePrefix}ica_dist`];
+      const icaSegments = [icaProx, icaMid, icaDist].filter(Boolean);
+
+      const severeIca = icaSegments.find(s => (s.psv && s.psv >= 230) || (s.comments && s.comments.includes('>=70%')) || s.flowDirection === 'absent');
+      const modIca = icaSegments.find(s => (s.psv && s.psv >= 125 && s.psv < 230) || (s.comments && s.comments.includes('50-69%')));
+
+      if (severeIca) {
+        const segMeta = SEGMENTS_META[severeIca.id];
+        const gradeText = severeIca.flowDirection === 'absent' ? 'Total Occlusion' : '≥70% Stenosis';
+        const psvText = severeIca.psv ? ` (PSV ${severeIca.psv} cm/s${ratio?.ratio ? `, Ratio ${ratio.ratio.toFixed(1)}` : ''})` : '';
+        const nascetText = nascetPct ? ` [NASCET: ${nascetPct}%]` : '';
+        findings.push({
+          id: `ica_severe_${side}`,
+          text: `${sideName} ${segMeta?.shortName || 'ICA'}: ${gradeText}${psvText}${nascetText}${severeIca.plaquePresent ? ' with atheroma' : ''}.`,
+          type: 'severe'
+        });
+      } else if (modIca) {
+        const segMeta = SEGMENTS_META[modIca.id];
+        const psvText = modIca.psv ? ` (PSV ${modIca.psv} cm/s${ratio?.ratio ? `, Ratio ${ratio.ratio.toFixed(1)}` : ''})` : '';
+        findings.push({
+          id: `ica_mod_${side}`,
+          text: `${sideName} ${segMeta?.shortName || 'ICA'}: 50–69% Stenosis${psvText}.`,
+          type: 'moderate'
+        });
+      }
+
+      // 2. Vertebral flow / steal
+      const vertProx = studyData.segments[`${sidePrefix}vert_prox`];
+      const vertMid = studyData.segments[`${sidePrefix}vert_mid`];
+      const vertDist = studyData.segments[`${sidePrefix}vert_dist`];
+      const vertSegs = [vertProx, vertMid, vertDist].filter(Boolean);
+
+      const retroVert = vertSegs.find(s => s.flowDirection === 'retrograde' || s.waveform?.toLowerCase().includes('retrograde') || s.waveform?.toLowerCase().includes('reversal'));
+      const stealVert = vertSegs.find(s => s.flowDirection === 'bidirectional' || s.waveform?.toLowerCase().includes('steal') || s.waveform?.toLowerCase().includes('bunny') || s.waveform?.toLowerCase().includes('deceleration'));
+
+      if (retroVert) {
+        findings.push({
+          id: `vert_retro_${side}`,
+          text: `${sideName} Vertebral: Retrograde flow (complete subclavian steal physiology).`,
+          type: 'severe'
+        });
+      } else if (stealVert) {
+        findings.push({
+          id: `vert_steal_${side}`,
+          text: `${sideName} Vertebral: Pre-steal / bidirectional waveform requiring subclavian investigation.`,
+          type: 'warning'
+        });
+      }
+
+      // 3. Subclavian stenosis / dampening
+      const subProx = studyData.segments[`${sidePrefix}subcl_prox`];
+      const subDist = studyData.segments[`${sidePrefix}subcl_dist`];
+      if ((subProx?.psv && subProx.psv > 180) || (subDist?.psv && subDist.psv > 180)) {
+        findings.push({
+          id: `sub_high_${side}`,
+          text: `${sideName} Subclavian: Elevated peak velocity (>180 cm/s) indicating proximal stenotic lesion.`,
+          type: 'moderate'
+        });
+      }
+
+      // 4. Carotid Bulb & CCA Plaque
+      const bulb = studyData.segments[`${sidePrefix}bulb`];
+      if (bulb?.plaquePresent) {
+        findings.push({
+          id: `bulb_plaque_${side}`,
+          text: `${sideName} Carotid Bulb: Atheroma present at carotid bifurcation.`,
+          type: 'info'
+        });
+      }
+    });
+
+    return findings;
+  }, [studyData, activeSideTab, rIcaPeak, lIcaPeak, rIcaCcaRatio, lIcaCcaRatio]);
+
+  // Drawer / Advanced Segment Data
+  const drawerSegment = advancedDrawerSegmentId ? studyData.segments[advancedDrawerSegmentId] : null;
+  const drawerMeta = advancedDrawerSegmentId ? SEGMENTS_META[advancedDrawerSegmentId] : null;
+  const drawerPlaque = useMemo(() => {
+    if (!advancedDrawerSegmentId) return null;
+    return studyData.plaques.find(p => p.segments.includes(advancedDrawerSegmentId)) || null;
+  }, [studyData.plaques, advancedDrawerSegmentId]);
 
   return (
-    <div id="segment-assessment-container" className="bg-[#0b1329] border border-slate-800 rounded-xl shadow-lg overflow-hidden flex flex-col h-full">
-      {/* Panel Header */}
-      <div className="p-4 bg-[#0f172a] border-b border-slate-800 flex items-center justify-between">
+    <div className="w-full h-full flex flex-col bg-[#0b1329] border border-slate-800 rounded-xl overflow-hidden shadow-xl select-none">
+      
+      {/* 1. COMPACT WORKSHEET HEADER & TABS */}
+      <div className="px-4 py-2.5 bg-[#0f172a] border-b border-slate-800 flex items-center justify-between gap-2 shrink-0">
         <div className="flex items-center gap-2">
-          <Sliders className="w-4 h-4 text-cyan-400" />
-          <h3 className="text-xs font-black text-slate-100 uppercase tracking-wider">
-            {isBulk ? `Bulk Assessment (${selectedIds.length} Segments)` : `Detailed Segment Assessment`}
-          </h3>
-        </div>
-        <button
-          id="assessment-normal-btn"
-          onClick={handleMarkNormal}
-          className="px-2.5 py-1 bg-emerald-950/70 text-emerald-300 hover:bg-emerald-900 border border-emerald-700 rounded-lg text-[10px] font-extrabold uppercase transition-colors cursor-pointer"
-        >
-          Quick Set Normal
-        </button>
-      </div>
-
-      {/* Selected segments list display with active switching and remove chips */}
-      <div className="px-4 py-2.5 bg-[#080d19] border-b border-slate-800 flex flex-col gap-2">
-        <div className="flex items-center justify-between">
-          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-            Active Segment Targets ({selectedIds.length}):
-          </span>
-          {selectedIds.length > 1 && (
-            <button
-              type="button"
-              id="classify-continuous-plaque-btn"
-              onClick={() => onAddPlaqueFromSegments(selectedIds)}
-              className="text-[10px] font-bold bg-amber-950/60 text-amber-300 hover:bg-amber-900 border border-amber-800 px-2 py-0.5 rounded transition-colors cursor-pointer"
-              title="Register single continuous plaque spanning all selected segments"
-            >
-              Classify Continuous Plaque ({selectedIds.length})
-            </button>
-          )}
-        </div>
-        <div className="flex flex-wrap gap-1.5 items-center">
-          {selectedIds.map(id => {
-            const meta = SEGMENTS_META[id];
-            const name = meta?.shortName || id;
-            const isActive = id === currentId;
-            return (
-              <span
-                key={id}
-                onClick={() => onSetActiveSegment(id)}
-                className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1 rounded-md cursor-pointer transition-all ${
-                  isActive
-                    ? 'bg-cyan-500 text-slate-950 shadow-sm border border-cyan-400 font-black'
-                    : 'bg-[#152038] hover:bg-[#1e2d4d] text-slate-300 border border-slate-700'
-                }`}
-                title="Click to make active for individual editing"
-              >
-                <span>{name} {isActive && '(Active)'}</span>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onRemoveSelectedSegment(id);
-                  }}
-                  className="w-3.5 h-3.5 rounded-full hover:bg-black/20 flex items-center justify-center text-current font-bold"
-                  title="Remove from selection"
-                >
-                  ×
-                </button>
-              </span>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Main Form Fields */}
-      <div className="p-5 flex-1 overflow-y-auto space-y-4">
-
-        {/* If bulk mode, display field apply selectors */}
-        {isBulk && (
-          <div className="bg-[#0f172a] border border-dashed border-cyan-900/60 p-3.5 rounded-xl space-y-2 mb-2">
-            <span className="text-[10px] font-bold text-cyan-400 uppercase flex items-center gap-1">
-              <Info className="w-3.5 h-3.5" /> Bulk Update Rules
-            </span>
-            <p className="text-[10px] text-slate-400 leading-normal">
-              Select which properties to apply to all selected segments:
+          <div className="p-1 bg-cyan-500/10 border border-cyan-500/30 rounded text-cyan-400">
+            <Activity className="w-4 h-4" />
+          </div>
+          <div>
+            <h2 className="text-xs font-bold text-slate-100 uppercase tracking-wider">
+              Hemodynamic Worksheet
+            </h2>
+            <p className="text-[10px] text-slate-400">
+              Inline entry • cm/s • auto-interpreting
             </p>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 pt-1">
-              <label className="flex items-center gap-1.5 text-[10px] font-medium text-slate-300">
-                <input type="checkbox" checked={applyPsv} onChange={(e) => setApplyPsv(e.target.checked)} className="rounded text-cyan-500" />
-                Apply PSV
-              </label>
-              <label className="flex items-center gap-1.5 text-[10px] font-medium text-slate-300">
-                <input type="checkbox" checked={applyEdv} onChange={(e) => setApplyEdv(e.target.checked)} className="rounded text-cyan-500" />
-                Apply EDV
-              </label>
-              <label className="flex items-center gap-1.5 text-[10px] font-medium text-slate-300">
-                <input type="checkbox" checked={applyFlow} onChange={(e) => setApplyFlow(e.target.checked)} className="rounded text-cyan-500" />
-                Apply Flow Direction
-              </label>
-              <label className="flex items-center gap-1.5 text-[10px] font-medium text-slate-300">
-                <input type="checkbox" checked={applyWave} onChange={(e) => setApplyWave(e.target.checked)} className="rounded text-cyan-500" />
-                Apply Waveform
-              </label>
-              <label className="flex items-center gap-1.5 text-[10px] font-medium text-slate-300">
-                <input type="checkbox" checked={applyPlaque} onChange={(e) => setApplyPlaque(e.target.checked)} className="rounded text-cyan-500" />
-                Apply Plaque Flag
-              </label>
-              <label className="flex items-center gap-1.5 text-[10px] font-medium text-slate-300">
-                <input type="checkbox" checked={applyImt} onChange={(e) => setApplyImt(e.target.checked)} className="rounded text-cyan-500" />
-                Apply IMT Flag
-              </label>
-              <label className="flex items-center gap-1.5 text-[10px] font-medium text-slate-300">
-                <input type="checkbox" checked={applyStenosis} onChange={(e) => setApplyStenosis(e.target.checked)} className="rounded text-cyan-500" />
-                Apply Stenosis Flag
-              </label>
-              <label className="flex items-center gap-1.5 text-[10px] font-medium text-slate-300">
-                <input type="checkbox" checked={applyComments} onChange={(e) => setApplyComments(e.target.checked)} className="rounded text-cyan-500" />
-                Apply Comments & Limits
-              </label>
-            </div>
-          </div>
-        )}
-
-        {/* 1. Velocities (PSV / EDV) */}
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className={`block text-[11px] font-bold uppercase mb-1 ${isBulk && !applyPsv ? 'text-slate-500 line-through' : 'text-slate-300'}`}>
-              Peak Systolic (PSV) <span className="text-[9px] text-slate-500 font-normal">(cm/s)</span>
-            </label>
-            <input
-              id="input-psv"
-              type="number"
-              placeholder="e.g. 75"
-              value={psv}
-              onChange={(e) => setPsv(e.target.value)}
-              disabled={isBulk && !applyPsv}
-              className="w-full px-3 py-2 rounded-lg bg-[#0f172a] border border-slate-700 text-xs font-mono text-slate-100 focus:border-cyan-500 focus:outline-none disabled:opacity-40"
-            />
-          </div>
-          <div>
-            <label className={`block text-[11px] font-bold uppercase mb-1 ${isBulk && !applyEdv ? 'text-slate-500 line-through' : 'text-slate-300'}`}>
-              End Diastolic (EDV) <span className="text-[9px] text-slate-500 font-normal">(cm/s)</span>
-            </label>
-            <input
-              id="input-edv"
-              type="number"
-              placeholder="e.g. 18"
-              value={edv}
-              onChange={(e) => setEdv(e.target.value)}
-              disabled={isBulk && !applyEdv}
-              className="w-full px-3 py-2 rounded-lg bg-[#0f172a] border border-slate-700 text-xs font-mono text-slate-100 focus:border-cyan-500 focus:outline-none disabled:opacity-40"
-            />
           </div>
         </div>
 
-        {/* 2. Flow Direction */}
-        <div className={isBulk && !applyFlow ? 'opacity-40 pointer-events-none' : ''}>
-          <label className="block text-[11px] font-bold uppercase text-slate-300 mb-1">
-            Flow Direction
-          </label>
-          <div className="grid grid-cols-3 gap-1.5">
-            {(['antegrade', 'retrograde', 'bidirectional'] as FlowDirection[]).map(dir => (
-              <button
-                key={dir}
-                type="button"
-                id={`flow-btn-${dir}`}
-                onClick={() => setFlowDirection(dir)}
-                className={`py-1.5 px-2 rounded-lg border text-[10px] font-black uppercase text-center transition-all cursor-pointer ${
-                  flowDirection === dir
-                    ? dir === 'antegrade'
-                      ? 'bg-emerald-950/80 border-emerald-600 text-emerald-300 shadow-sm'
-                      : dir === 'retrograde'
-                      ? 'bg-rose-950/80 border-rose-600 text-rose-300 shadow-sm'
-                      : 'bg-amber-950/80 border-amber-600 text-amber-300 shadow-sm'
-                    : 'bg-[#0f172a] border-slate-700 text-slate-400 hover:bg-slate-800'
-                }`}
-              >
-                {dir}
-              </button>
-            ))}
-            {(['absent', 'not_assessed'] as FlowDirection[]).map(dir => (
-              <button
-                key={dir}
-                type="button"
-                id={`flow-btn-${dir}`}
-                onClick={() => setFlowDirection(dir)}
-                className={`col-span-1 py-1.5 px-2 rounded-lg border text-[10px] font-black uppercase text-center transition-all cursor-pointer ${
-                  flowDirection === dir
-                    ? 'bg-slate-800 border-slate-600 text-slate-100 shadow-sm'
-                    : 'bg-[#0f172a] border-slate-700 text-slate-400 hover:bg-slate-800'
-                }`}
-              >
-                {dir === 'not_assessed' ? 'Unassessed' : dir}
-              </button>
-            ))}
-          </div>
+        {/* Tab Selection: RIGHT | LEFT | BILATERAL */}
+        <div className="flex items-center bg-[#070d1e] p-0.5 rounded-lg border border-slate-800">
+          <button
+            id="tab-btn-right"
+            onClick={() => setActiveSideTab('right')}
+            className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${
+              activeSideTab === 'right'
+                ? 'bg-cyan-600 text-white shadow-sm'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            RIGHT
+          </button>
+          <button
+            id="tab-btn-left"
+            onClick={() => setActiveSideTab('left')}
+            className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${
+              activeSideTab === 'left'
+                ? 'bg-cyan-600 text-white shadow-sm'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            LEFT
+          </button>
+          <button
+            id="tab-btn-bilateral"
+            onClick={() => setActiveSideTab('bilateral')}
+            className={`px-2.5 py-1 text-xs font-bold rounded-md transition-all ${
+              activeSideTab === 'bilateral'
+                ? 'bg-cyan-600 text-white shadow-sm'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            BILATERAL
+          </button>
         </div>
 
-        {/* 3. Waveform Section */}
-        <div className={isBulk && !applyWave ? 'opacity-40 pointer-events-none' : ''}>
-          <div className="flex items-center justify-between mb-1.5">
-            <div className="flex items-center gap-2">
-              <label className="block text-[11px] font-bold uppercase text-slate-300">
-                Waveform
-              </label>
-              {isVertebral && (
-                <span className="px-1.5 py-0.2 rounded text-[8.5px] font-bold bg-cyan-950/70 border border-cyan-700 text-cyan-300">
-                  Vertebral Steal Protocol
-                </span>
-              )}
-            </div>
-            <button
-              type="button"
-              id="btn-open-waveform-guide"
-              onClick={() => {
-                setGuideInitialDescriptor(activeDescriptor?.id);
-                setGuideOpen(true);
-              }}
-              className="flex items-center gap-1 text-[10px] font-semibold text-cyan-400 hover:text-cyan-300 transition-colors cursor-pointer"
-              title="Open full interactive waveform descriptor reference and criteria guide"
-            >
-              <Activity className="w-3 h-3 text-cyan-400" />
-              <span>Reference & Examples</span>
-            </button>
-          </div>
+        {/* Quick Normal Action */}
+        <div className="hidden sm:flex items-center gap-1.5">
+          <button
+            id="btn-quick-normal-side"
+            onClick={() => handleMarkSideNormal(activeSideTab === 'left' ? 'left' : 'right')}
+            title={`Set all ${activeSideTab === 'left' ? 'Left' : 'Right'} vessels to standard normal values`}
+            className="px-2.5 py-1 bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white text-[11px] font-semibold rounded border border-slate-700/80 flex items-center gap-1 transition-colors"
+          >
+            <Check className="w-3 h-3 text-emerald-400" />
+            Normal {activeSideTab === 'left' ? 'Left' : 'Right'}
+          </button>
+        </div>
+      </div>
 
-          {/* Structured Descriptor Chips */}
-          <div className="flex flex-wrap gap-1.5 mb-2">
-            {vesselWaveformOptions.map(opt => {
-              const isSelected = waveform === opt.label || (opt.id === 'normal' && waveform.toLowerCase() === 'normal');
+      {/* 2. PRIMARY WORKSHEET TABLE (INLINE EDITING) */}
+      <div className="flex-1 overflow-y-auto min-h-0 custom-scrollbar">
+        <table className="w-full text-left border-collapse table-fixed">
+          {/* Sticky Table Header */}
+          <thead className="sticky top-0 z-20 bg-[#0f172a] shadow-sm border-b border-slate-700/80 text-[11px] font-bold text-slate-300 uppercase tracking-wider">
+            <tr>
+              <th className="py-2 px-3 w-[26%]">Vessel / Segment</th>
+              <th className="py-2 px-2 w-[12%] text-center">PSV <span className="text-[9px] text-slate-400 font-normal lowercase">cm/s</span></th>
+              <th className="py-2 px-2 w-[12%] text-center">EDV <span className="text-[9px] text-slate-400 font-normal lowercase">cm/s</span></th>
+              <th className="py-2 px-2 w-[22%]">Waveform</th>
+              <th className="py-2 px-2 w-[13%]">Plaque</th>
+              <th className="py-2 px-2 w-[11%]">Stenosis</th>
+              <th className="py-2 px-1 w-[4%] text-center"></th>
+            </tr>
+          </thead>
+
+          <tbody className="divide-y divide-slate-800/60 text-xs">
+            {vesselGroups.map((group) => {
+              const groupSummary = getGroupSummary(group);
+              const isIca = group.vesselKey === 'ica';
+              const isAbnormalGroup = groupSummary.includes('≥70%') || groupSummary.includes('50–69%') || groupSummary.includes('⚠') || groupSummary.includes('70');
+
               return (
-                <WaveformHoverCard
-                  key={opt.id}
-                  descriptor={opt}
-                  vesselCategory={vesselCategory}
-                  onOpenGuide={() => {
-                    setGuideInitialDescriptor(opt.id);
-                    setGuideOpen(true);
-                  }}
-                >
-                  <button
-                    type="button"
-                    id={`waveform-chip-${opt.id}`}
-                    onClick={() => {
-                      setWaveform(opt.label);
-                      // Auto-sync vertebral flow direction if applicable
-                      if (isVertebral) {
-                        if (opt.id === 'bidirectional_partial_steal') {
-                          setFlowDirection('bidirectional');
-                        } else if (opt.id === 'complete_reversal') {
-                          setFlowDirection('retrograde');
-                        } else if (opt.id === 'absent') {
-                          setFlowDirection('absent');
-                        } else if (flowDirection === 'not_assessed') {
-                          setFlowDirection('antegrade');
-                        }
-                      } else {
-                        if (opt.id === 'absent') {
-                          setFlowDirection('absent');
-                        } else if (flowDirection === 'not_assessed') {
-                          setFlowDirection('antegrade');
-                        }
-                      }
-                    }}
-                    className={`px-2 py-1 rounded text-[9.5px] font-bold transition-all border cursor-pointer ${
-                      isSelected
-                        ? opt.id === 'normal'
-                          ? 'bg-emerald-950/70 border-emerald-500 text-emerald-300 font-extrabold shadow-sm'
-                          : opt.id.includes('steal') || opt.id.includes('reversal') || opt.id === 'tardus_parvus'
-                          ? 'bg-amber-950/80 border-amber-500 text-amber-200 font-extrabold shadow-sm'
-                          : 'bg-cyan-950/70 border-cyan-500 text-cyan-200 font-extrabold shadow-sm'
-                        : 'bg-[#0f172a] border-slate-800 text-slate-300 hover:bg-slate-800 hover:border-slate-700'
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                </WaveformHoverCard>
+                <React.Fragment key={`${group.side}_${group.vesselKey}`}>
+                  {/* GROUP HEADER ROW WITH HIGH-YIELD SUMMARY */}
+                  <tr className="bg-[#121c38]/90 border-t border-slate-700/60">
+                    <td colSpan={7} className="py-1.5 px-3">
+                      <div className="flex items-center justify-between text-[11px] font-bold">
+                        <span className="text-cyan-300 uppercase tracking-wider flex items-center gap-1.5">
+                          <span className={`w-1.5 h-1.5 rounded-full ${isAbnormalGroup ? 'bg-amber-400 animate-pulse' : 'bg-cyan-400'}`} />
+                          {group.name}
+                        </span>
+                        
+                        {groupSummary && (
+                          <span className={`text-[10px] px-2 py-0.5 rounded font-mono font-medium ${
+                            isAbnormalGroup 
+                              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' 
+                              : 'bg-slate-800 text-slate-300 border border-slate-700/50'
+                          }`}>
+                            {groupSummary}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+
+                  {/* VESSEL SEGMENTS IN THIS GROUP */}
+                  {group.segmentIds.map((segId, segIdx) => {
+                    const meta = SEGMENTS_META[segId];
+                    const seg = studyData.segments[segId] || {
+                      id: segId,
+                      name: meta?.name || segId,
+                      side: group.side,
+                      psv: null,
+                      edv: null,
+                      flowDirection: 'antegrade',
+                      waveform: 'Normal',
+                      plaquePresent: false,
+                      intimalThickening: false,
+                      stenosisPresent: false,
+                      localPsvRatio: null,
+                      comments: '',
+                      technicalLimitations: ''
+                    };
+
+                    const isSelected = selectedIds.includes(segId);
+                    const isActive = activeId === segId;
+                    const waveformOptions = getWaveformOptionsForSegment(segId);
+                    const stenosisOptions = getStenosisOptionsForSegment(segId);
+
+                    const plaqueSeverity = getSegmentPlaqueSeverity(segId);
+                    const stenosisGrade = getSegmentStenosisGrade(segId);
+
+                    // High-yield highlighting
+                    const isHighPsv = seg.psv !== null && seg.psv >= 125;
+                    const isVeryHighPsv = seg.psv !== null && seg.psv >= 230;
+                    const isSevereStenosis = stenosisGrade === '>=70%' || stenosisGrade === 'near_occlusion' || stenosisGrade === 'occluded';
+                    const isModerateStenosis = stenosisGrade === '50-69%';
+                    const hasPlaque = seg.plaquePresent && plaqueSeverity !== 'none';
+                    const isRetroFlow = seg.flowDirection === 'retrograde' || (seg.waveform && seg.waveform.toLowerCase().includes('retrograde'));
+
+                    // NASCET badge for specific lesion
+                    const nascetCalc = group.side === 'right' ? studyData.nascetRight : studyData.nascetLeft;
+                    const isNascetLesion = isIca && nascetCalc?.calculatedPercent !== null && nascetCalc?.calculatedPercent !== undefined && (seg.plaquePresent || isSevereStenosis || isModerateStenosis);
+
+                    return (
+                      <tr
+                        key={segId}
+                        id={`worksheet-row-${segId}`}
+                        onClick={() => handleRowClick(segId)}
+                        className={`transition-colors cursor-pointer group ${
+                          isActive
+                            ? 'bg-cyan-950/40 hover:bg-cyan-950/50 border-l-2 border-cyan-400'
+                            : isSelected
+                            ? 'bg-slate-800/60 hover:bg-slate-800/80 border-l-2 border-cyan-600'
+                            : 'hover:bg-slate-800/30'
+                        }`}
+                      >
+                        {/* 1. Segment Label */}
+                        <td className="py-1.5 px-3">
+                          <div className="flex items-center gap-1.5">
+                            <span className={`text-xs font-semibold ${
+                              isActive ? 'text-cyan-200 font-bold' : isSelected ? 'text-slate-100' : 'text-slate-300'
+                            }`}>
+                              {meta?.shortName || meta?.name?.replace(/Right |Left /gi, '') || segId}
+                            </span>
+
+                            {/* NASCET lesion indicator */}
+                            {isNascetLesion && segIdx === 0 && (
+                              <span className="text-[9px] px-1 py-0.2 bg-purple-500/20 text-purple-300 border border-purple-500/40 rounded font-mono font-bold">
+                                NASCET {Math.round(nascetCalc.calculatedPercent!)}%
+                              </span>
+                            )}
+
+                            {/* Notes/Limitations indicator */}
+                            {seg.comments && (
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-400" title={`Note: ${seg.comments}`} />
+                            )}
+                          </div>
+                        </td>
+
+                        {/* 2. PSV (Inline Numeric Input) */}
+                        <td className="py-1 px-1.5 text-center" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            id={`input-psv-${segId}`}
+                            type="number"
+                            min="0"
+                            max="600"
+                            placeholder="—"
+                            value={seg.psv !== null && seg.psv !== undefined ? seg.psv : ''}
+                            onChange={(e) => handlePsvChange(segId, e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                (e.target as HTMLInputElement).blur();
+                              }
+                            }}
+                            className={`w-full py-1 px-1.5 text-center text-xs font-mono font-bold rounded border transition-colors outline-none focus:ring-1 focus:ring-cyan-400 ${
+                              isVeryHighPsv
+                                ? 'bg-red-950/50 border-red-500/60 text-red-300 shadow-inner'
+                                : isHighPsv
+                                ? 'bg-amber-950/40 border-amber-500/50 text-amber-300'
+                                : seg.psv !== null
+                                ? 'bg-[#070d1e] border-slate-700 text-slate-100 hover:border-slate-600'
+                                : 'bg-[#070d1e]/50 border-slate-800 text-slate-400 hover:border-slate-700'
+                            }`}
+                          />
+                        </td>
+
+                        {/* 3. EDV (Inline Numeric Input) */}
+                        <td className="py-1 px-1.5 text-center" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            id={`input-edv-${segId}`}
+                            type="number"
+                            min="0"
+                            max="300"
+                            placeholder="—"
+                            value={seg.edv !== null && seg.edv !== undefined ? seg.edv : ''}
+                            onChange={(e) => handleEdvChange(segId, e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                (e.target as HTMLInputElement).blur();
+                              }
+                            }}
+                            className={`w-full py-1 px-1.5 text-center text-xs font-mono font-bold rounded border transition-colors outline-none focus:ring-1 focus:ring-cyan-400 ${
+                              seg.edv !== null && seg.edv >= 100
+                                ? 'bg-red-950/50 border-red-500/60 text-red-300'
+                                : seg.edv !== null && seg.edv >= 40
+                                ? 'bg-amber-950/40 border-amber-500/50 text-amber-300'
+                                : seg.edv !== null
+                                ? 'bg-[#070d1e] border-slate-700 text-slate-100 hover:border-slate-600'
+                                : 'bg-[#070d1e]/50 border-slate-800 text-slate-400 hover:border-slate-700'
+                            }`}
+                          />
+                        </td>
+
+                        {/* 4. Waveform (Inline Vessel-Specific Dropdown) */}
+                        <td className="py-1 px-1.5" onClick={(e) => e.stopPropagation()}>
+                          <select
+                            id={`select-waveform-${segId}`}
+                            value={seg.waveform || (segId.includes('subcl') ? 'Multiphasic' : segId.includes('vert') ? 'Normal antegrade' : 'Normal')}
+                            onChange={(e) => handleWaveformChange(segId, e.target.value)}
+                            className={`w-full py-1 px-1.5 text-[11px] rounded border transition-colors outline-none focus:ring-1 focus:ring-cyan-400 font-medium truncate ${
+                              isRetroFlow
+                                ? 'bg-red-950/50 border-red-500/50 text-red-300 font-bold'
+                                : seg.waveform && (seg.waveform.includes('Turbulent') || seg.waveform.includes('Dampened') || seg.waveform.includes('Tardus'))
+                                ? 'bg-amber-950/40 border-amber-500/40 text-amber-300'
+                                : 'bg-[#070d1e] border-slate-700/80 text-slate-200 hover:border-slate-600'
+                            }`}
+                          >
+                            {waveformOptions.map(opt => (
+                              <option key={opt} value={opt} className="bg-[#0f172a] text-slate-200">
+                                {opt}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+
+                        {/* 5. Plaque (Inline Dropdown: None / Mild / Moderate / Severe) */}
+                        <td className="py-1 px-1.5" onClick={(e) => e.stopPropagation()}>
+                          <select
+                            id={`select-plaque-${segId}`}
+                            value={hasPlaque ? plaqueSeverity : 'none'}
+                            onChange={(e) => handlePlaqueChange(segId, e.target.value)}
+                            className={`w-full py-1 px-1.5 text-[11px] rounded border transition-colors outline-none focus:ring-1 focus:ring-cyan-400 font-medium capitalize ${
+                              plaqueSeverity === 'severe'
+                                ? 'bg-red-950/50 border-red-500/50 text-red-300 font-bold'
+                                : plaqueSeverity === 'moderate'
+                                ? 'bg-amber-950/40 border-amber-500/40 text-amber-300 font-semibold'
+                                : plaqueSeverity === 'mild'
+                                ? 'bg-blue-950/40 border-blue-500/40 text-blue-300'
+                                : 'bg-[#070d1e] border-slate-800 text-slate-400 hover:border-slate-700'
+                            }`}
+                          >
+                            <option value="none" className="bg-[#0f172a] text-slate-400">None</option>
+                            <option value="mild" className="bg-[#0f172a] text-blue-300 font-semibold">Mild</option>
+                            <option value="moderate" className="bg-[#0f172a] text-amber-300 font-semibold">Moderate</option>
+                            <option value="severe" className="bg-[#0f172a] text-red-300 font-bold">Severe</option>
+                          </select>
+                        </td>
+
+                        {/* 6. Stenosis (Inline Dropdown) */}
+                        <td className="py-1 px-1.5" onClick={(e) => e.stopPropagation()}>
+                          <select
+                            id={`select-stenosis-${segId}`}
+                            value={stenosisGrade}
+                            onChange={(e) => handleStenosisChange(segId, e.target.value)}
+                            className={`w-full py-1 px-1 text-[11px] rounded border transition-colors outline-none focus:ring-1 focus:ring-cyan-400 font-medium ${
+                              isSevereStenosis
+                                ? 'bg-red-950/50 border-red-500/50 text-red-300 font-bold'
+                                : isModerateStenosis
+                                ? 'bg-amber-950/40 border-amber-500/40 text-amber-300 font-bold'
+                                : stenosisGrade === '<50%'
+                                ? 'bg-blue-950/40 border-blue-500/40 text-blue-300'
+                                : 'bg-[#070d1e] border-slate-800 text-slate-400 hover:border-slate-700'
+                            }`}
+                          >
+                            {stenosisOptions.map(opt => (
+                              <option key={opt.value} value={opt.value} className="bg-[#0f172a] text-slate-200">
+                                {opt.label}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+
+                        {/* 7. Action Button (⋯) for Advanced Details */}
+                        <td className="py-1 px-1 text-center" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            id={`btn-advanced-${segId}`}
+                            onClick={() => setAdvancedDrawerSegmentId(segId)}
+                            title="Open Advanced Morphology & NASCET Details"
+                            className="p-1 rounded text-slate-400 hover:text-cyan-300 hover:bg-slate-800 transition-colors"
+                          >
+                            <MoreHorizontal className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </React.Fragment>
               );
             })}
-          </div>
+          </tbody>
+        </table>
+      </div>
 
-          {/* Active Descriptor Dynamic Diagnostic Banner */}
-          {activeDescriptor && activeDescriptor.id !== 'normal' && activeDescriptor.id !== 'not_assessed' && (
-            <div className="mb-2 p-2 rounded-lg bg-[#071120] border border-cyan-900/60 flex items-start justify-between gap-2 text-[10.5px]">
-              <div>
-                <span className="font-bold text-cyan-300 block">
-                  {activeDescriptor.label}
-                </span>
-                <span className="text-slate-400 text-[9.5px] line-clamp-2">
-                  {activeDescriptor.interpretation}
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setGuideInitialDescriptor(activeDescriptor.id);
-                  setGuideOpen(true);
-                }}
-                className="shrink-0 text-[9px] font-bold text-cyan-400 hover:underline cursor-pointer"
-              >
-                View Criteria →
-              </button>
-            </div>
+      {/* 3. KEY FINDINGS FOOTER SUMMARY */}
+      <div className="p-3 bg-[#0f172a] border-t border-slate-800 shrink-0">
+        <div className="flex items-center justify-between mb-1.5">
+          <div className="flex items-center gap-1.5 text-xs font-bold text-slate-200 uppercase tracking-wider">
+            <ShieldAlert className="w-3.5 h-3.5 text-cyan-400" />
+            <span>Key Findings • {keyFindings.length}</span>
+          </div>
+          {keyFindings.length === 0 && (
+            <span className="text-[10px] text-emerald-400 font-semibold flex items-center gap-1">
+              <CheckCircle2 className="w-3 h-3" />
+              Unremarkable Study
+            </span>
           )}
-
-          <input
-            id="input-waveform-custom"
-            type="text"
-            placeholder="Type custom waveform profile or qualifier..."
-            value={waveform}
-            onChange={(e) => setWaveform(e.target.value)}
-            className="w-full px-3 py-1.5 rounded-lg bg-[#0f172a] border border-slate-700 text-xs text-slate-100 focus:border-cyan-500 focus:outline-none"
-          />
         </div>
 
-        {/* 4. Pathology Binary Flags */}
-        <div className="space-y-2 pt-1 border-t border-slate-800">
-          <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Arterial Wall Assessment</span>
-          
-          <div className="grid grid-cols-3 gap-2">
-            {/* Plaque checkbox */}
-            <label
-              id="label-plaque-present"
-              className={`flex flex-col items-center p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
-                isBulk && !applyPlaque ? 'opacity-40' : ''
-              } ${
-                plaquePresent
-                  ? 'border-amber-500 bg-amber-950/50 text-amber-300 shadow-md'
-                  : 'border-slate-800 bg-[#0f172a] hover:bg-slate-800 text-slate-400'
-              }`}
-            >
-              <input
-                type="checkbox"
-                checked={plaquePresent}
-                disabled={isBulk && !applyPlaque}
-                onChange={(e) => setPlaquePresent(e.target.checked)}
-                className="sr-only"
-              />
-              <span className="text-[10.5px] font-black">Plaque Present</span>
-              <span className="text-[8.5px] text-slate-500 mt-0.5">Visible focal lesion</span>
-            </label>
-
-            {/* Intimal Thickening checkbox */}
-            <label
-              id="label-imt-increased"
-              className={`flex flex-col items-center p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
-                isBulk && !applyImt ? 'opacity-40' : ''
-              } ${
-                intimalThickening
-                  ? 'border-cyan-500 bg-cyan-950/50 text-cyan-300 shadow-md'
-                  : 'border-slate-800 bg-[#0f172a] hover:bg-slate-800 text-slate-400'
-              }`}
-            >
-              <input
-                type="checkbox"
-                checked={intimalThickening}
-                disabled={isBulk && !applyImt}
-                onChange={(e) => setIntimalThickening(e.target.checked)}
-                className="sr-only"
-              />
-              <span className="text-[10.5px] font-black">Thickened IMT</span>
-              <span className="text-[8.5px] text-slate-500 mt-0.5">Diffuse thickening</span>
-            </label>
-
-            {/* Stenosis Present checkbox */}
-            <label
-              id="label-stenosis-present"
-              className={`flex flex-col items-center p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
-                isBulk && !applyStenosis ? 'opacity-40' : ''
-              } ${
-                stenosisPresent
-                  ? 'border-rose-500 bg-rose-950/50 text-rose-300 shadow-md'
-                  : 'border-slate-800 bg-[#0f172a] hover:bg-slate-800 text-slate-400'
-              }`}
-            >
-              <input
-                type="checkbox"
-                checked={stenosisPresent}
-                disabled={isBulk && !applyStenosis}
-                onChange={(e) => setStenosisPresent(e.target.checked)}
-                className="sr-only"
-              />
-              <span className="text-[10.5px] font-black">Stenosis Present</span>
-              <span className="text-[8.5px] text-slate-500 mt-0.5">Hemodynamic lesion</span>
-            </label>
-          </div>
-        </div>
-
-        {/* 5. Plaque Creation Shortcut */}
-        {plaquePresent && (
-          <div className="bg-amber-950/30 border border-amber-800/80 p-3 rounded-xl flex flex-col gap-2">
-            <div className="flex items-start gap-2">
-              <ClipboardList className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-              <div>
-                <span className="text-[10px] font-black text-amber-300 uppercase block">Plaque Registry Integration</span>
-                <span className="text-[9.5px] text-slate-400 leading-normal">
-                  Plaque is marked present on {isBulk ? 'these segments' : 'this segment'}. Click below to configure composition, surface, and thickness in the plaque register.
-                </span>
+        {keyFindings.length > 0 ? (
+          <div className="space-y-1 max-h-24 overflow-y-auto custom-scrollbar">
+            {keyFindings.map(f => (
+              <div 
+                key={f.id} 
+                className={`text-[11px] px-2 py-1 rounded flex items-start gap-1.5 font-medium ${
+                  f.type === 'severe'
+                    ? 'bg-red-950/30 text-red-200 border border-red-500/30'
+                    : f.type === 'moderate'
+                    ? 'bg-amber-950/30 text-amber-200 border border-amber-500/30'
+                    : f.type === 'warning'
+                    ? 'bg-orange-950/30 text-orange-200 border border-orange-500/30'
+                    : 'bg-slate-800/60 text-slate-300 border border-slate-700/40'
+                }`}
+              >
+                <span className="text-cyan-400 font-bold">•</span>
+                <span>{f.text}</span>
               </div>
-            </div>
-            <button
-              id="register-plaque-btn"
-              type="button"
-              onClick={() => onAddPlaqueFromSegments(selectedIds)}
-              className="w-full text-center py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs transition-all cursor-pointer shadow-md"
-            >
-              Attach Plaque Profile & Log Measurements
-            </button>
+            ))}
           </div>
+        ) : (
+          <p className="text-[11px] text-slate-400 italic">
+            Normal bilateral velocities and waveforms without hemodynamically significant stenosis.
+          </p>
         )}
+      </div>
 
-        {/* 6. Smart Local Ratio Calculation Panel (Visible only in single assessment mode) */}
-        {!isBulk && (
-          <div className="bg-[#0f172a] border border-slate-800 p-3.5 rounded-xl space-y-2.5 shadow-md">
-            <span className="text-[10px] font-black text-cyan-400 uppercase tracking-wider block">Local PSV Ratio (Diagnostic)</span>
-            
-            {localRatioData ? (
-              <div className="space-y-2">
-                <div className="grid grid-cols-2 gap-2 bg-[#0b101f] border border-slate-800 p-2.5 rounded-lg">
-                  <div>
-                    <span className="text-[8px] font-bold text-slate-500 block uppercase">Reference Site</span>
-                    <span className="text-[10px] font-bold text-slate-200 truncate block">
-                      {localRatioData.referenceName}
-                    </span>
-                    <span className="text-[10px] font-mono text-cyan-400">{localRatioData.referencePsv} cm/s</span>
-                  </div>
-                  <div>
-                    <span className="text-[8px] font-bold text-slate-500 block uppercase">Stenosis Site</span>
-                    <span className="text-[10px] font-bold text-slate-200 truncate block">
-                      {SEGMENTS_META[currentId]?.shortName}
-                    </span>
-                    <span className="text-[10px] font-mono text-cyan-400">{psv || '0'} cm/s</span>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between border-t border-slate-800 pt-2 text-[11px]">
-                  <span className="font-bold text-slate-300">Calculated Ratio:</span>
-                  <span className="font-mono text-xs font-black text-cyan-300 bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-800">
-                    {localRatioData.ratio}
+      {/* 4. OPTIONAL ADVANCED DETAILS MODAL / DRAWER (Triggered on Demand by '⋯') */}
+      {advancedDrawerSegmentId && drawerSegment && drawerMeta && (
+        <div 
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
+          onClick={() => setAdvancedDrawerSegmentId(null)}
+        >
+          <div 
+            className="w-full max-w-lg bg-[#0b1329] border border-slate-700 rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] animate-in fade-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="px-4 py-3 bg-[#0f172a] border-b border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Sliders className="w-4 h-4 text-cyan-400" />
+                <div>
+                  <h3 className="text-xs font-bold text-slate-100 uppercase tracking-wider">
+                    {drawerMeta.name}
+                  </h3>
+                  <span className="text-[10px] font-mono text-slate-400">
+                    ID: {drawerSegment.id} • {drawerMeta.side.toUpperCase()}
                   </span>
                 </div>
               </div>
-            ) : (
-              <p className="text-[10px] text-slate-500 italic">
-                {psv ? 'Add a PSV to a normal upstream segment (or override below) to compute local PSV ratio.' : 'Register a segment PSV and an upstream reference to view ratios.'}
-              </p>
-            )}
-
-            {/* Reference Override Selector */}
-            <div className="pt-1.5 border-t border-slate-800">
-              <label className="block text-[9px] text-slate-400 font-bold uppercase mb-1">
-                Reference Segment Override
-              </label>
-              <select
-                id="select-ratio-reference-override"
-                value={refOverrideId}
-                onChange={(e) => setRefOverrideId(e.target.value)}
-                className="w-full bg-[#0b101f] px-2.5 py-1.5 rounded-lg border border-slate-700 text-xs text-slate-200 focus:outline-none"
+              <button
+                id="btn-close-advanced-drawer"
+                onClick={() => setAdvancedDrawerSegmentId(null)}
+                className="p-1 text-slate-400 hover:text-white rounded hover:bg-slate-800 transition-colors"
               >
-                <option value="auto">
-                  {autoUpstreamRef ? `Auto-Resolved (${autoUpstreamRef.name})` : 'Auto-Resolve Upstream Healthy'}
-                </option>
-                {sameSideSegmentsWithPsv.map(s => (
-                  <option key={s.id} value={s.id}>
-                    {s.name} ({s.psv} cm/s)
-                  </option>
-                ))}
-              </select>
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Scrollable Body */}
+            <div className="p-4 overflow-y-auto space-y-4 text-xs custom-scrollbar">
+              
+              {/* Plaque Morphology Panel */}
+              <div className="p-3 bg-[#0f172a]/70 border border-slate-800 rounded-lg space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-slate-200 flex items-center gap-1.5">
+                    <Layers className="w-3.5 h-3.5 text-cyan-400" />
+                    Plaque Morphology & Texture
+                  </span>
+                  <span className="text-[10px] text-slate-400">
+                    {drawerSegment.plaquePresent ? 'Plaque Documented' : 'No plaque marked'}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  <div>
+                    <label className="text-[10px] text-slate-400 block mb-1">Composition</label>
+                    <select
+                      value={drawerPlaque?.composition || 'homogeneous_fibrous'}
+                      onChange={(e) => {
+                        if (drawerPlaque && onUpdateStudy) {
+                          const updated = studyData.plaques.map(p => p.id === drawerPlaque.id ? { ...p, composition: e.target.value as PlaqueComposition } : p);
+                          onUpdateStudy({ plaques: updated });
+                        }
+                      }}
+                      className="w-full py-1 px-2 text-xs bg-[#070d1e] border border-slate-700 rounded text-slate-200 outline-none"
+                    >
+                      <option value="homogeneous_fibrous">Homogeneous / Fibrous</option>
+                      <option value="heterogeneous">Heterogeneous (Mixed)</option>
+                      <option value="calcified">Calcified</option>
+                      <option value="lipid_rich">Lipid-Rich Necrotic Core</option>
+                      <option value="intraplaque_hemorrhage">Intraplaque Hemorrhage</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] text-slate-400 block mb-1">Surface Contour</label>
+                    <select
+                      value={drawerPlaque?.surface || 'smooth'}
+                      onChange={(e) => {
+                        if (drawerPlaque && onUpdateStudy) {
+                          const updated = studyData.plaques.map(p => p.id === drawerPlaque.id ? { ...p, surface: e.target.value as PlaqueSurface } : p);
+                          onUpdateStudy({ plaques: updated });
+                        }
+                      }}
+                      className="w-full py-1 px-2 text-xs bg-[#070d1e] border border-slate-700 rounded text-slate-200 outline-none"
+                    >
+                      <option value="smooth">Smooth</option>
+                      <option value="irregular">Irregular</option>
+                      <option value="ulcerated">Ulcerated (High Embolic Risk)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[10px] text-slate-400 block mb-1">Calcification</label>
+                    <select
+                      value={drawerPlaque?.calcificShadowing || 'none'}
+                      onChange={(e) => {
+                        if (drawerPlaque && onUpdateStudy) {
+                          const updated = studyData.plaques.map(p => p.id === drawerPlaque.id ? { ...p, calcificShadowing: e.target.value as CalcificShadowing } : p);
+                          onUpdateStudy({ plaques: updated });
+                        }
+                      }}
+                      className="w-full py-1 px-2 text-xs bg-[#070d1e] border border-slate-700 rounded text-slate-200 outline-none"
+                    >
+                      <option value="none">None</option>
+                      <option value="minor">Minor (&lt; 1cm)</option>
+                      <option value="partial">Partial (&gt; 1cm)</option>
+                      <option value="dense">Dense Acoustic Shadowing</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] text-slate-400 block mb-1">Max Thickness (mm)</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      placeholder="e.g. 2.4"
+                      value={drawerPlaque?.maxThicknessMm ?? ''}
+                      onChange={(e) => {
+                        const val = e.target.value === '' ? null : parseFloat(e.target.value);
+                        if (drawerPlaque && onUpdateStudy) {
+                          const updated = studyData.plaques.map(p => p.id === drawerPlaque.id ? { ...p, maxThicknessMm: val } : p);
+                          onUpdateStudy({ plaques: updated });
+                        }
+                      }}
+                      className="w-full py-1 px-2 text-xs bg-[#070d1e] border border-slate-700 rounded text-slate-100 outline-none font-mono"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* NASCET Measurement (If ICA or requested) */}
+              {drawerSegment.id.includes('ica') && (
+                <div className="p-3 bg-[#0f172a]/70 border border-slate-800 rounded-lg space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-200 flex items-center gap-1.5">
+                      <Sliders className="w-3.5 h-3.5 text-purple-400" />
+                      NASCET Diameter Geometry
+                    </span>
+                    <button
+                      onClick={() => {
+                        const side = drawerMeta.side === 'left' ? 'left' : 'right';
+                        onOpenNascet(side);
+                        setAdvancedDrawerSegmentId(null);
+                      }}
+                      className="text-[10px] text-purple-400 hover:text-purple-300 flex items-center gap-1"
+                    >
+                      Open Full Tool <ExternalLink className="w-3 h-3" />
+                    </button>
+                  </div>
+
+                  <p className="text-[10px] text-slate-400 leading-relaxed">
+                    % Stenosis = [(1 - A / B) × 100], where A is the residual lumen at the narrowest lesion point and B is the normal distal ICA lumen diameter.
+                  </p>
+
+                  <div className="grid grid-cols-2 gap-3 pt-1">
+                    <div>
+                      <label className="text-[10px] text-slate-400 block mb-1">Residual Lumen A (mm)</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        placeholder="e.g. 1.2"
+                        value={
+                          drawerMeta.side === 'right'
+                            ? studyData.nascetRight?.longitudinal?.minLumenA ?? ''
+                            : studyData.nascetLeft?.longitudinal?.minLumenA ?? ''
+                        }
+                        onChange={(e) => {
+                          const val = e.target.value === '' ? null : parseFloat(e.target.value);
+                          if (onUpdateStudy) {
+                            const sideKey = drawerMeta.side === 'right' ? 'nascetRight' : 'nascetLeft';
+                            const current = studyData[sideKey] || { side: drawerMeta.side === 'right' ? 'right' : 'left' };
+                            const updatedLong = { ...(current.longitudinal || { plane: 'longitudinal' }), minLumenA: val };
+                            const calc = calculateNascetStenosis(updatedLong.minLumenA ?? null, updatedLong.normalLumenB ?? null);
+                            onUpdateStudy({
+                              [sideKey]: {
+                                ...current,
+                                longitudinal: updatedLong,
+                                calculatedPercent: calc
+                              }
+                            });
+                          }
+                        }}
+                        className="w-full py-1 px-2 text-xs bg-[#070d1e] border border-slate-700 rounded text-slate-100 outline-none focus:border-purple-400 font-mono"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] text-slate-400 block mb-1">Distal Reference B (mm)</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        placeholder="e.g. 5.0"
+                        value={
+                          drawerMeta.side === 'right'
+                            ? studyData.nascetRight?.longitudinal?.normalLumenB ?? ''
+                            : studyData.nascetLeft?.longitudinal?.normalLumenB ?? ''
+                        }
+                        onChange={(e) => {
+                          const val = e.target.value === '' ? null : parseFloat(e.target.value);
+                          if (onUpdateStudy) {
+                            const sideKey = drawerMeta.side === 'right' ? 'nascetRight' : 'nascetLeft';
+                            const current = studyData[sideKey] || { side: drawerMeta.side === 'right' ? 'right' : 'left' };
+                            const updatedLong = { ...(current.longitudinal || { plane: 'longitudinal' }), normalLumenB: val };
+                            const calc = calculateNascetStenosis(updatedLong.minLumenA ?? null, updatedLong.normalLumenB ?? null);
+                            onUpdateStudy({
+                              [sideKey]: {
+                                ...current,
+                                longitudinal: updatedLong,
+                                calculatedPercent: calc
+                              }
+                            });
+                          }
+                        }}
+                        className="w-full py-1 px-2 text-xs bg-[#070d1e] border border-slate-700 rounded text-slate-100 outline-none focus:border-purple-400 font-mono"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Flow Direction & Hemodynamic Notes */}
+              <div className="p-3 bg-[#0f172a]/70 border border-slate-800 rounded-lg space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-slate-200 flex items-center gap-1.5">
+                    <Activity className="w-3.5 h-3.5 text-cyan-400" />
+                    Flow Vector & Technical Nuances
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[10px] text-slate-400 block mb-1">Flow Direction</label>
+                    <select
+                      value={drawerSegment.flowDirection || 'antegrade'}
+                      onChange={(e) => onUpdateSegment(drawerSegment.id, { flowDirection: e.target.value as FlowDirection })}
+                      className="w-full py-1 px-2 text-xs bg-[#070d1e] border border-slate-700 rounded text-slate-200 outline-none"
+                    >
+                      <option value="antegrade">Antegrade (Normal)</option>
+                      <option value="bidirectional">Bidirectional (Pre-Steal)</option>
+                      <option value="retrograde">Retrograde (Reversed)</option>
+                      <option value="absent">Absent (No Doppler signal)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] text-slate-400 block mb-1">Stenosis Present</label>
+                    <select
+                      value={drawerSegment.stenosisPresent ? 'yes' : 'no'}
+                      onChange={(e) => onUpdateSegment(drawerSegment.id, { stenosisPresent: e.target.value === 'yes' })}
+                      className="w-full py-1 px-2 text-xs bg-[#070d1e] border border-slate-700 rounded text-slate-200 outline-none"
+                    >
+                      <option value="no">No</option>
+                      <option value="yes">Yes</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Notes & Limitations */}
+                <div>
+                  <label className="text-[10px] text-slate-400 block mb-1">Diagnostic Notes & Limitations</label>
+                  <textarea
+                    rows={2}
+                    placeholder="Document acoustic shadowing, tortuosity, or patient-specific factors..."
+                    value={drawerSegment.comments || ''}
+                    onChange={(e) => onUpdateSegment(drawerSegment.id, { comments: e.target.value })}
+                    className="w-full py-1.5 px-2 text-xs bg-[#070d1e] border border-slate-700 rounded text-slate-200 outline-none focus:border-cyan-400 resize-none"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-4 py-2.5 bg-[#0f172a] border-t border-slate-800 flex items-center justify-end">
+              <button
+                id="btn-done-advanced-drawer"
+                onClick={() => setAdvancedDrawerSegmentId(null)}
+                className="px-4 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold rounded shadow transition-colors"
+              >
+                Apply & Return to Worksheet
+              </button>
             </div>
           </div>
-        )}
-
-        {/* 7. Comments and Technical Limitations */}
-        <div className="grid grid-cols-2 gap-3 pt-1 border-t border-slate-800">
-          <div className={isBulk && !applyComments ? 'opacity-40 pointer-events-none' : ''}>
-            <label className="block text-[11px] font-bold uppercase text-slate-300 mb-1">
-              Comments
-            </label>
-            <textarea
-              id="input-segment-comments"
-              placeholder="e.g. calcified shadow..."
-              value={comments}
-              onChange={(e) => setComments(e.target.value)}
-              disabled={isBulk && !applyComments}
-              className="w-full h-16 px-3 py-2 rounded-lg bg-[#0f172a] border border-slate-700 text-xs text-slate-100 focus:border-cyan-500 focus:outline-none resize-none"
-            />
-          </div>
-          <div className={isBulk && !applyComments ? 'opacity-40 pointer-events-none' : ''}>
-            <label className="block text-[11px] font-bold uppercase text-slate-300 mb-1">
-              Technical Limits
-            </label>
-            <textarea
-              id="input-segment-limitations"
-              placeholder="e.g. tortuosity..."
-              value={techLimits}
-              onChange={(e) => setTechLimits(e.target.value)}
-              disabled={isBulk && !applyComments}
-              className="w-full h-16 px-3 py-2 rounded-lg bg-[#0f172a] border border-slate-700 text-xs text-slate-100 focus:border-cyan-500 focus:outline-none resize-none"
-            />
-          </div>
         </div>
+      )}
 
-      </div>
-
-      {/* Save Trigger Button */}
-      <div className="p-4 border-t border-slate-800 bg-[#0f172a] flex items-center justify-between">
-        <span className="text-[10px] text-slate-500">
-          Click Apply and Save to commit changes to patient chart.
-        </span>
-        <button
-          id="save-assessment-btn"
-          type="button"
-          onClick={handleSave}
-          className="flex items-center gap-1.5 px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-slate-950 text-xs font-black rounded-lg transition-all shadow-md cursor-pointer"
-        >
-          <Save className="w-3.5 h-3.5" />
-          <span>Apply and Save</span>
-        </button>
-      </div>
-
-      {/* Waveform Reference & Criteria Modal */}
-      <WaveformDescriptorGuide
-        isOpen={guideOpen}
-        onClose={() => setGuideOpen(false)}
-        category={vesselCategory}
-        initialDescriptorId={guideInitialDescriptor}
-        onSelectDescriptor={(desc) => {
-          setWaveform(desc.label);
-          if (isVertebral) {
-            if (desc.id === 'bidirectional_partial_steal') {
-              setFlowDirection('bidirectional');
-            } else if (desc.id === 'complete_reversal') {
-              setFlowDirection('retrograde');
-            } else if (desc.id === 'absent') {
-              setFlowDirection('absent');
-            } else if (flowDirection === 'not_assessed') {
-              setFlowDirection('antegrade');
-            }
-          } else {
-            if (desc.id === 'absent') {
-              setFlowDirection('absent');
-            } else if (flowDirection === 'not_assessed') {
-              setFlowDirection('antegrade');
-            }
-          }
-          setGuideOpen(false);
-        }}
-      />
     </div>
   );
 };

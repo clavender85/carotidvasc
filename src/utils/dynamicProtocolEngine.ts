@@ -194,30 +194,6 @@ export const DYNAMIC_RULES_CATALOG: DynamicProtocolRule[] = [
     source: 'regional',
     ifCondition: 'Special exam type = post_cea or patient history includes CEA',
     thenAction: 'Enforce surgical transition zone and patch inspection'
-  },
-  {
-    id: 'rule_tardus_parvus_proximal_inflow',
-    name: 'Tardus-Parvus Proximal Inflow Disease Review',
-    description: 'When a tardus-parvus waveform (prolonged systolic acceleration time, rounded/blunted peak) is detected, mandates ipsilateral proximal inflow and aortic arch review.',
-    priority: 85,
-    category: 'carotid',
-    severity: 'blocking',
-    enabled: true,
-    source: 'universal',
-    ifCondition: 'Waveform on any carotid or vertebral segment = Tardus-parvus',
-    thenAction: 'Trigger mandatory proximal origin/inflow interrogation for upstream flow-limiting lesion'
-  },
-  {
-    id: 'rule_damped_waveform_review',
-    name: 'Damped Waveform Hemodynamic Correlation',
-    description: 'When a damped waveform is documented, recommends correlation with proximal origin or systemic cardiac output.',
-    priority: 45,
-    category: 'carotid',
-    severity: 'recommendation',
-    enabled: true,
-    source: 'universal',
-    ifCondition: 'Waveform on any segment = Damped',
-    thenAction: 'Recommend proximal inflow correlation and cardiac status review'
   }
 ];
 
@@ -519,11 +495,18 @@ export function buildBaselineRequirements(context: ProtocolContext): ProtocolReq
     )
   });
 
-  // Subclavian: Routine vs Conditional based on active site protocol
-  if (activeProtocol.subclavianRoutine === 'routine') {
+  // Subclavian: Routine vs Conditional based on active site protocol or suspected steal indication
+  const hasStealIndication = (study.clinicalIndications || []).some(i => i.toLowerCase().includes('steal')) ||
+    (study.clinicalContext?.indications || []).some(i => i.label.toLowerCase().includes('steal'));
+
+  if (activeProtocol.subclavianRoutine === 'routine' || hasStealIndication) {
+    const reasonText = hasStealIndication
+      ? 'Clinical indication: Suspected subclavian steal workup mandated at baseline'
+      : 'Site protocol: Subclavian assessment configured as routine for all patients';
+
     baselineRequirements.push({
       id: 'base_r_subcl_routine',
-      label: 'Right Subclavian Artery (Site Routine Protocol)',
+      label: hasStealIndication ? 'Right Subclavian Artery (Suspected Steal Indication)' : 'Right Subclavian Artery (Site Routine Protocol)',
       category: 'baseline',
       side: 'right',
       targetSegmentId: 'r_subcl_prox',
@@ -532,14 +515,14 @@ export function buildBaselineRequirements(context: ProtocolContext): ProtocolReq
       level: 'required',
       blocking: true,
       allowTechnicalOverride: true,
-      reason: 'Site protocol: Subclavian assessment configured as routine for all patients',
+      reason: reasonText,
       sourceRuleId: 'rule_baseline_acquisition',
       satisfied: !!(overrides['base_r_subcl_routine'] || isSegmentAssessed(study.segments['r_subcl_prox']))
     });
 
     baselineRequirements.push({
       id: 'base_l_subcl_routine',
-      label: 'Left Subclavian Artery (Site Routine Protocol)',
+      label: hasStealIndication ? 'Left Subclavian Artery (Suspected Steal Indication)' : 'Left Subclavian Artery (Site Routine Protocol)',
       category: 'baseline',
       side: 'left',
       targetSegmentId: 'l_subcl_prox',
@@ -548,7 +531,7 @@ export function buildBaselineRequirements(context: ProtocolContext): ProtocolReq
       level: 'required',
       blocking: true,
       allowTechnicalOverride: true,
-      reason: 'Site protocol: Subclavian assessment configured as routine for all patients',
+      reason: reasonText,
       sourceRuleId: 'rule_baseline_acquisition',
       satisfied: !!(overrides['base_l_subcl_routine'] || isSegmentAssessed(study.segments['l_subcl_prox']))
     });
@@ -658,6 +641,79 @@ export function evaluateIcaRules(context: ProtocolContext): ProtocolRequirement[
         triggeredBy: `${sideCap} ICA Stenosis Workup`,
         sourceRuleId: 'rule_elevated_ica_velocity_secondary_params',
         satisfied: !!(overrides[`dyn_${side}_distal_ica_waveform`] || distalAssessed)
+      });
+    }
+  }
+
+  return requirements;
+}
+
+export function isStenosisAtLeast50(side: Side, study: StudyData, criteria: ClassificationSystem): boolean {
+  const suggested = study.classifications[side]?.suggested || suggestIcaStenosisCategory(side, study).category;
+  const confirmed = study.classifications[side]?.confirmed || '';
+  const prefix = side === 'right' ? 'r' : 'l';
+  const hasStenosisFlag = ['prox', 'mid', 'dist'].some(lvl => study.segments[`${prefix}_ica_${lvl}`]?.stenosisPresent);
+  
+  const checkText = (text: string) => {
+    if (!text) return false;
+    const l = text.toLowerCase();
+    if (l.includes('normal') || l.includes('mild') || l.includes('not assessed')) return false;
+    if (
+      l.includes('moderate') ||
+      l.includes('severe') ||
+      l.includes('critical') ||
+      l.includes('50') ||
+      l.includes('70') ||
+      l.includes('80') ||
+      l.includes('90') ||
+      l.includes('near occlusion') ||
+      l.includes('occlusion') ||
+      l.includes('≥50') ||
+      l.includes('>=50') ||
+      l.includes('≥70') ||
+      l.includes('>=70')
+    ) {
+      return true;
+    }
+    return false;
+  };
+
+  return checkText(suggested) || checkText(confirmed) || hasStenosisFlag;
+}
+
+export function evaluateNascetRequirements(context: ProtocolContext): ProtocolRequirement[] {
+  const { study, criteria } = context;
+  const requirements: ProtocolRequirement[] = [];
+  const overrides = study.technicalOverrides || {};
+  const sides: Side[] = ['right', 'left'];
+
+  for (const side of sides) {
+    const prefix = side === 'right' ? 'r' : 'l';
+    const sideCap = side.charAt(0).toUpperCase() + side.slice(1);
+
+    if (isStenosisAtLeast50(side, study, criteria)) {
+      const nascetState = study.nascet[side];
+      const hasNascetMeasurement = (nascetState.longitudinal.minLumenA !== null && nascetState.longitudinal.normalLumenB !== null) ||
+        (nascetState.transverse.minLumenA !== null && nascetState.transverse.normalLumenB !== null);
+      
+      const suggestedClass = study.classifications[side]?.suggested || '';
+      const isNearOrTotalOcclusion = suggestedClass.toLowerCase().includes('occlusion') || suggestedClass.toLowerCase().includes('near occlusion');
+
+      requirements.push({
+        id: `dyn_${side}_nascet_requirement`,
+        label: `${sideCap} NASCET Diameter Measurement (Mandatory for ≥50% Stenosis)`,
+        category: 'stenosis',
+        side,
+        vesselId: `${prefix}_ica_prox`,
+        targetSegmentId: `${prefix}_ica_prox`,
+        targetModule: 'nascet',
+        level: 'required',
+        blocking: true,
+        allowTechnicalOverride: true,
+        reason: `Active criteria engine classifies ${sideCap} ICA stenosis as ≥50%. NASCET diameter reduction measurement is required.`,
+        triggeredBy: `${sideCap} ICA Stenosis ≥ 50%`,
+        sourceRuleId: 'rule_nascet_diameter_mandatory_50_pct',
+        satisfied: !!(overrides[`dyn_${side}_nascet_requirement`] || hasNascetMeasurement || isNearOrTotalOcclusion)
       });
     }
   }
@@ -839,69 +895,6 @@ export function evaluatePostInterventionRules(context: ProtocolContext): Protoco
   return requirements;
 }
 
-export function evaluateWaveformHemodynamicRules(context: ProtocolContext): ProtocolRequirement[] {
-  const { study } = context;
-  const requirements: ProtocolRequirement[] = [];
-  const overrides = study.technicalOverrides || {};
-  const sides: Side[] = ['right', 'left'];
-
-  for (const side of sides) {
-    const prefix = side === 'right' ? 'r' : 'l';
-    const sideCap = side.charAt(0).toUpperCase() + side.slice(1);
-
-    const ccaProx = study.segments[`${prefix}_cca_prox`];
-    const ccaMid = study.segments[`${prefix}_cca_mid`];
-    const ccaDist = study.segments[`${prefix}_cca_dist`];
-    const icaProx = study.segments[`${prefix}_ica_prox`];
-    const vertMid = study.segments[`${prefix}_vert_mid`];
-
-    const carotids = [ccaProx, ccaMid, ccaDist, icaProx].filter(Boolean);
-    const hasTardusCarotid = carotids.some(s => (s?.waveform || '').toLowerCase().includes('tardus'));
-    const hasTardusVert = (vertMid?.waveform || '').toLowerCase().includes('tardus');
-
-    if (hasTardusCarotid || hasTardusVert) {
-      requirements.push({
-        id: `dyn_${side}_tardus_parvus_inflow`,
-        label: `${sideCap} Proximal Inflow Assessment (Tardus-Parvus Waveform Detected)`,
-        category: 'carotid',
-        side,
-        vesselId: `${prefix}_cca_prox`,
-        targetSegmentId: `${prefix}_cca_prox`,
-        targetModule: 'segment',
-        level: 'required',
-        blocking: true,
-        allowTechnicalOverride: true,
-        reason: `Tardus-parvus waveform identified in the ${sideCap} system. Delayed systolic acceleration and rounded systolic peaks indicate severe proximal inflow stenosis or occlusion upstream (${side === 'right' ? 'RCCA origin / Brachiocephalic Trunk' : 'LCCA origin / Aortic Arch'}).`,
-        triggeredBy: `${sideCap} Tardus-Parvus Waveform`,
-        sourceRuleId: 'rule_tardus_parvus_proximal_inflow',
-        satisfied: !!(overrides[`dyn_${side}_tardus_parvus_inflow`] || (isSegmentAssessed(study.segments[`${prefix}_cca_prox`]) && (ccaProx?.comments?.length || 0) > 0))
-      });
-    }
-
-    const hasDampedCarotid = carotids.some(s => (s?.waveform || '').toLowerCase().includes('damped') && !(s?.waveform || '').toLowerCase().includes('tardus'));
-    if (hasDampedCarotid) {
-      requirements.push({
-        id: `dyn_${side}_damped_inflow_review`,
-        label: `Review ${sideCap} Proximal Inflow (Damped Carotid Waveform)`,
-        category: 'carotid',
-        side,
-        vesselId: `${prefix}_cca_prox`,
-        targetSegmentId: `${prefix}_cca_prox`,
-        targetModule: 'segment',
-        level: 'recommended',
-        blocking: false,
-        allowTechnicalOverride: true,
-        reason: `Damped waveform documented in ${sideCap} carotid artery. Review proximal vessel origins and correlate with systemic hemodynamic status (cardiac output/aortic valve).`,
-        triggeredBy: `${sideCap} Damped Waveform`,
-        sourceRuleId: 'rule_damped_waveform_review',
-        satisfied: !!(overrides[`dyn_${side}_damped_inflow_review`] || isSegmentAssessed(study.segments[`${prefix}_cca_prox`]))
-      });
-    }
-  }
-
-  return requirements;
-}
-
 export function evaluateRequirementCompletion(
   requirement: ProtocolRequirement,
   context: ProtocolContext
@@ -923,6 +916,16 @@ export function evaluateRequirementCompletion(
   }
 
   // Segment check if targetSegmentId is present
+  if (requirement.targetModule === 'nascet' && requirement.side) {
+    const nascetState = study.nascet[requirement.side];
+    const hasMeas = (nascetState.longitudinal.minLumenA !== null && nascetState.longitudinal.normalLumenB !== null) ||
+      (nascetState.transverse.minLumenA !== null && nascetState.transverse.normalLumenB !== null);
+    return {
+      ...requirement,
+      satisfied: hasMeas || requirement.satisfied
+    };
+  }
+
   if (requirement.targetSegmentId) {
     const seg = study.segments[requirement.targetSegmentId];
     if (requirement.id.includes('waveform') || requirement.id.includes('vert_mid')) {
@@ -1147,7 +1150,7 @@ export function evaluateDynamicProtocol(
   const dynamic = [
     ...evaluateVertebralRules(context),
     ...evaluateIcaRules(context),
-    ...evaluateWaveformHemodynamicRules(context),
+    ...evaluateNascetRequirements(context),
     ...evaluatePlaqueRules(context),
     ...evaluateCcaReferenceRules(context),
     ...evaluateOcclusionRules(context),

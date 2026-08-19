@@ -1,3 +1,19 @@
+import {
+  ClinicalContextCategory,
+  ContextItemSource,
+  ClinicalContextItem,
+  ReferralSourceType,
+  ReferralSource,
+  ClinicalContextData,
+  ContextOption,
+  ConditionalContextRule,
+  ClinicalContextTemplate,
+  ReferralImportResult,
+  ReferralImportAdapter
+} from './types/clinicalContext';
+
+export * from './types/clinicalContext';
+
 export type FlowDirection = 'antegrade' | 'retrograde' | 'bidirectional' | 'absent' | 'not_assessed';
 
 export type VertebralFlowDirection =
@@ -245,8 +261,11 @@ export interface StudyData {
   imtThresholdMm: number;
   customThresholds: CustomThresholds;
   patientName: string;
+  patientDob?: string;
   patientId: string;
   examDate: string;
+  location?: string;
+  company?: string;
   sonographer: string;
   interpretingPhysician: string;
   studyComments: string;
@@ -269,4 +288,10 @@ export interface StudyData {
     right?: string | null;
     left?: string | null;
   };
+
+  // Demo Mode State
+  isDemoMode?: boolean;
+  demoCaseTitle?: string;
+  // Reusable Modality-Agnostic Clinical Context
+  clinicalContext?: ClinicalContextData;
 }

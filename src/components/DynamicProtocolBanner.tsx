@@ -8,11 +8,9 @@ import {
   ChevronUp,
   Activity,
   ArrowRight,
-  Sliders,
-  FileText,
-  Info,
   Layers,
-  Sparkles
+  Sparkles,
+  Info
 } from 'lucide-react';
 
 interface DynamicProtocolBannerProps {
@@ -31,152 +29,112 @@ export const DynamicProtocolBanner: React.FC<DynamicProtocolBannerProps> = ({
   onNavigateTab
 }) => {
   const [isChecklistExpanded, setIsChecklistExpanded] = useState<boolean>(false);
-  const { summaryStats, warnings, outstandingRequired, outstandingRecommended, triggeredRequirements } = evaluation;
+  const { summaryStats, warnings, outstandingRequired, outstandingRecommended } = evaluation;
 
   const isComplete = evaluation.canCompleteStudy;
   const protocolName = studyData.siteProtocol?.localProtocolName || 'Standard Carotid Protocol';
   const criteriaName = studyData.classificationSystem.replace(/_/g, ' ');
-  const hasTriggeredAlerts = warnings.length > 0;
+
+  // Get active trigger alerts / outstanding requirements as compact chips
+  const dynamicOutstanding = outstandingRequired.filter(r => r.category !== 'baseline');
+  const allOutstanding = outstandingRequired;
 
   return (
-    <div id="dynamic-protocol-contextual-container" className="space-y-2">
-      {/* 1. PROMINENT CONTEXTUAL TRIGGER ALERTS (Shown when dynamic requirements/warnings are active) */}
-      {hasTriggeredAlerts && (
-        <div
-          id="dynamic-protocol-triggered-alert"
-          className="bg-amber-950/40 border-2 border-amber-500/80 rounded-xl p-3.5 sm:p-4 shadow-lg animate-in fade-in duration-200"
-        >
-          <div className="space-y-3">
-            {warnings.map(warn => {
-              // Collect all outstanding items related to this trigger or segment
-              const relatedReqs = outstandingRequired.filter(
-                r => r.targetSegmentId === warn.targetSegmentId || (r.isDynamicTriggered && r.reason.toLowerCase().includes(warn.targetSegmentId ? warn.targetSegmentId.replace('_', ' ') : ''))
-              );
-
-              return (
-                <div key={warn.id} className="flex flex-col md:flex-row md:items-start justify-between gap-3 bg-[#0d162e]/90 p-3.5 rounded-lg border border-amber-600/60">
-                  <div className="flex items-start gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-amber-500/20 border border-amber-500 flex items-center justify-center text-amber-400 shrink-0 mt-0.5 animate-pulse">
-                      <AlertTriangle className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-xs sm:text-sm font-black text-amber-300 uppercase tracking-wide">
-                          {warn.title}
-                        </span>
-                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-950 border border-amber-700 text-amber-200 font-bold">
-                          Protocol Trigger
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-200 mt-1 leading-relaxed">
-                        {warn.message}
-                      </p>
-
-                      {/* Explicit Required Sub-items */}
-                      {relatedReqs.length > 0 && (
-                        <div className="mt-2 pt-2 border-t border-amber-900/60">
-                          <span className="text-[10px] font-extrabold text-amber-400 uppercase tracking-wider block mb-1">
-                            Required Additional Imaging:
-                          </span>
-                          <ul className="text-[11px] text-slate-300 space-y-1 font-medium">
-                            {relatedReqs.map(r => (
-                              <li key={r.id} className="flex items-center gap-1.5">
-                                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
-                                <span className="font-bold text-slate-100">{r.label}</span>
-                                {r.reason && <span className="text-slate-400 text-[10px]">({r.reason})</span>}
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Direct Action Buttons */}
-                  <div className="flex sm:flex-col gap-2 shrink-0 self-end md:self-center">
-                    {warn.targetSegmentId && warn.actionLabel && (
-                      <button
-                        type="button"
-                        onClick={() => onSelectSegment(warn.targetSegmentId!)}
-                        className="px-3.5 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs uppercase tracking-wider transition-all cursor-pointer shadow-md flex items-center justify-center gap-1.5"
-                      >
-                        <span>{warn.actionLabel}</span>
-                        <ArrowRight className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => onOpenTechnicalModal()}
-                      className="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-[10.5px] font-bold text-slate-300 hover:text-cyan-300 transition-all cursor-pointer text-center"
-                    >
-                      Record Waiver
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* 2. COMPACT PROTOCOL STATUS STRIP (Subtle & space-efficient) */}
+    <div id="dynamic-protocol-compact-container" className="space-y-2">
+      {/* 1. COMPACT PROTOCOL STRIP (Unified single bar) */}
       <div
         id="dynamic-protocol-compact-strip"
-        className={`px-3 py-2 rounded-xl border flex flex-wrap items-center justify-between gap-2.5 text-xs transition-all ${
+        className={`px-3.5 py-2 rounded-xl border flex flex-wrap items-center justify-between gap-2.5 text-xs transition-all shadow-xs ${
           isComplete
             ? 'bg-[#08171f] border-emerald-900/80 text-slate-300'
+            : warnings.length > 0
+            ? 'bg-[#14120a] border-amber-800/80 text-slate-300'
             : 'bg-[#0b1329] border-slate-800 text-slate-300'
         }`}
       >
+        {/* Left: Protocol Status & Progress */}
         <div className="flex items-center gap-2.5 flex-wrap">
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 font-extrabold text-[11px] uppercase tracking-wide">
             {isComplete ? (
-              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span className="text-emerald-400 flex items-center gap-1">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>Protocol Satisfied</span>
+              </span>
             ) : (
-              <Activity className="w-4 h-4 text-cyan-400 shrink-0" />
+              <span className="text-cyan-300 flex items-center gap-1 font-bold">
+                <Activity className="w-3.5 h-3.5 text-cyan-400" />
+                <span>ACTIVE PROTOCOL • {studyData.siteProtocol?.protocolPresetId === 'australia_asum' ? 'ASUM 2021' : studyData.siteProtocol?.protocolPresetId === 'united_states_iac' ? 'IAC / SRU' : studyData.siteProtocol?.localProtocolName || 'Standard Carotid Protocol'}</span>
+              </span>
             )}
-            <span className="font-extrabold text-[11px] uppercase tracking-wide">
-              {isComplete ? (
-                <span className="text-emerald-400">✓ Protocol Satisfied</span>
-              ) : (
-                <span className="text-slate-300">Protocol In Progress</span>
-              )}
-            </span>
           </div>
-
-          <span className="text-slate-600 hidden sm:inline">•</span>
-
-          <span className="text-[11px] text-slate-400 font-mono">
-            {protocolName} ({criteriaName})
-          </span>
 
           <span className="text-slate-600 hidden sm:inline">•</span>
 
           <span className="text-[11px] text-slate-300 font-mono">
             Baseline: <strong className="text-slate-100">{summaryStats.baselineCompleted}/{summaryStats.baselineTotal}</strong>
             {summaryStats.dynamicTotal > 0 && (
-              <> | Dynamic: <strong className="text-amber-300">{summaryStats.dynamicCompleted}/{summaryStats.dynamicTotal}</strong></>
+              <> • Dynamic: <strong className="text-amber-300">{summaryStats.dynamicCompleted}/{summaryStats.dynamicTotal}</strong></>
             )}
             {summaryStats.technicalExceptionsCount > 0 && (
-              <> | Waivers: <strong className="text-cyan-300">{summaryStats.technicalExceptionsCount}</strong></>
+              <> • Waivers: <strong className="text-cyan-300">{summaryStats.technicalExceptionsCount}</strong></>
             )}
           </span>
+
+          {/* Compact Clickable Requirement & Warning Chips */}
+          {allOutstanding.length > 0 && (
+            <div className="flex items-center gap-1.5 flex-wrap ml-1">
+              <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1">
+                <AlertTriangle className="w-3 h-3 text-amber-400" />
+                {allOutstanding.length} Outstanding:
+              </span>
+              {allOutstanding.slice(0, 3).map(req => (
+                <button
+                  key={req.id}
+                  type="button"
+                  onClick={() => {
+                    if (req.targetSegmentId) {
+                      onSelectSegment(req.targetSegmentId);
+                    } else {
+                      onOpenTechnicalModal(req);
+                    }
+                  }}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-950/80 hover:bg-amber-900 border border-amber-600/80 text-amber-200 hover:text-white text-[10px] font-bold transition-all cursor-pointer shadow-2xs"
+                  title={`${req.label} — ${req.reason || 'Click to assess vessel'}`}
+                >
+                  <span>{req.label}</span>
+                  <ArrowRight className="w-2.5 h-2.5 text-amber-400" />
+                </button>
+              ))}
+              {allOutstanding.length > 3 && (
+                <button
+                  type="button"
+                  onClick={() => setIsChecklistExpanded(true)}
+                  className="text-[10px] text-amber-400 font-bold hover:underline"
+                >
+                  +{allOutstanding.length - 3} more
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
-        <div className="flex items-center gap-2 ml-auto sm:ml-0">
+        {/* Right: Actions (Waiver & Checklist Toggle) */}
+        <div className="flex items-center gap-2 ml-auto">
           <button
             type="button"
             onClick={() => onOpenTechnicalModal()}
-            className="px-2 py-1 rounded bg-[#0f172a] hover:bg-slate-800 border border-slate-700 text-[10.5px] font-bold text-slate-300 hover:text-cyan-300 transition-all cursor-pointer flex items-center gap-1"
+            className="px-2 py-1 rounded-lg bg-[#0f172a] hover:bg-slate-800 border border-slate-700 text-[10.5px] font-bold text-slate-300 hover:text-cyan-300 transition-all cursor-pointer flex items-center gap-1"
+            title="Record sonographer technical limitation / exception"
           >
             <ShieldAlert className="w-3 h-3 text-amber-400" />
-            <span>Waiver</span>
+            <span className="hidden sm:inline">Record Waiver</span>
+            <span className="sm:hidden">Waiver</span>
           </button>
 
           <button
             type="button"
             onClick={() => setIsChecklistExpanded(!isChecklistExpanded)}
-            className="px-2 py-1 rounded bg-cyan-950/60 hover:bg-cyan-900 border border-cyan-800 text-cyan-300 text-[10.5px] font-bold transition-all cursor-pointer flex items-center gap-1"
+            className="px-2.5 py-1 rounded-lg bg-cyan-950/60 hover:bg-cyan-900 border border-cyan-800 text-cyan-300 text-[10.5px] font-bold transition-all cursor-pointer flex items-center gap-1"
           >
             <span>{isChecklistExpanded ? 'Hide Checklist' : 'Checklist'}</span>
             {isChecklistExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
@@ -184,9 +142,38 @@ export const DynamicProtocolBanner: React.FC<DynamicProtocolBannerProps> = ({
         </div>
       </div>
 
-      {/* 3. OPTIONAL EXPANDABLE CHECKLIST ACCORDION */}
+      {/* 2. EXPANDABLE PROTOCOL REQUIREMENTS DRAWER (Appears on click) */}
       {isChecklistExpanded && (
-        <div className="p-4 bg-[#090f20] border border-slate-800 rounded-xl space-y-4 animate-in fade-in duration-200 text-xs">
+        <div className="p-4 bg-[#090f20] border border-slate-800 rounded-xl space-y-4 animate-in fade-in duration-150 text-xs shadow-lg">
+          {/* Active Warnings Detail if present */}
+          {warnings.length > 0 && (
+            <div className="space-y-2">
+              <span className="text-[10.5px] font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+                Active Clinical Triggers & Guideline Warnings:
+              </span>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                {warnings.map(warn => (
+                  <div key={warn.id} className="p-2.5 bg-[#0d162e] border border-amber-700/60 rounded-lg flex items-start justify-between gap-2">
+                    <div>
+                      <div className="font-bold text-amber-300 text-xs">{warn.title}</div>
+                      <div className="text-slate-300 text-[11px] mt-0.5">{warn.message}</div>
+                    </div>
+                    {warn.targetSegmentId && (
+                      <button
+                        type="button"
+                        onClick={() => onSelectSegment(warn.targetSegmentId!)}
+                        className="px-2 py-1 rounded bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-[10px] uppercase shrink-0 transition-all cursor-pointer"
+                      >
+                        {warn.actionLabel || 'Assess'}
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Outstanding Required Items */}
             <div className="p-3 bg-[#0d162f] rounded-lg border border-slate-800 space-y-2">

@@ -1,15 +1,11 @@
 import React, { useState, useMemo } from 'react';
-import { StudyData, SegmentData, PlaqueData, MainTab, ProtocolRequirement, ProtocolOverride } from '../types';
+import { StudyData, SegmentData, PlaqueData, MainTab, ProtocolRequirement, ProtocolOverride, ProtocolAuditEvent } from '../types';
 import { suggestIcaStenosisCategory, generateSideSummary } from '../utils/calculations';
 import { evaluateDynamicProtocol } from '../utils/dynamicProtocolEngine';
-import { PatientExaminationHeader } from './PatientExaminationHeader';
-import { ClinicalContextSection } from './ClinicalContextSection';
-import { AbnormalCarotidFindingsPanel } from './AbnormalCarotidFindingsPanel';
+import { ClinicalContextPanel } from './clinicalContext';
 import { DynamicProtocolBanner } from './DynamicProtocolBanner';
 import { TechnicalExceptionModal } from './TechnicalExceptionModal';
-import { CarotidDiagram } from './CarotidDiagram';
-import { VesselTreeList } from './VesselTreeList';
-import { CarotidVesselMatrixView } from './CarotidVesselMatrixView';
+import { CarotidWorksheetMap } from './CarotidWorksheetMap';
 import { SegmentAssessment } from './SegmentAssessment';
 import { PlaqueRegister } from './PlaqueRegister';
 import { NascetCalculator } from './NascetCalculator';
@@ -17,28 +13,21 @@ import { AssociatedPathologyTab } from './AssociatedPathologyTab';
 import { CriteriaReferenceTab } from './CriteriaReferenceTab';
 import { 
   Layers, 
-  LayoutGrid, 
   ClipboardList, 
   Ruler, 
   ShieldAlert, 
   BookOpen, 
-  CheckCheck, 
   ChevronDown, 
   ChevronUp, 
-  FileText, 
-  ArrowRight,
-  Sparkles,
-  RefreshCw,
-  Activity,
-  Check
+  Activity
 } from 'lucide-react';
 
 interface ScanWorksheetTabProps {
   studyData: StudyData;
   selectedSegmentIds: string[];
   activeSegmentId: string | null;
-  assessmentViewMode: 'diagram_tree' | 'matrix';
-  onSetAssessmentViewMode: (mode: 'diagram_tree' | 'matrix') => void;
+  assessmentViewMode?: 'diagram_tree' | 'matrix';
+  onSetAssessmentViewMode?: (mode: 'diagram_tree' | 'matrix') => void;
   onSelectSegment: (id: string, isMulti: boolean) => void;
   onSetActiveSegment: (id: string) => void;
   onRemoveSelectedSegment: (id: string) => void;
@@ -122,12 +111,19 @@ export const ScanWorksheetTab: React.FC<ScanWorksheetTabProps> = ({
       setTargetTechRequirement(req);
     } else if (activeSegmentId) {
       // Find matching requirement or fallback
-      const matchingReq = dynamicEvaluation.allEvaluatedRequirements.find(r => r.targetSegmentId === activeSegmentId) || {
+      const allEvaluated = [
+        ...dynamicEvaluation.baselineRequirements,
+        ...dynamicEvaluation.triggeredRequirements,
+        ...dynamicEvaluation.completedRequirements,
+      ];
+      const matchingReq: ProtocolRequirement = allEvaluated.find(r => r.targetSegmentId === activeSegmentId) || {
         id: `override_${activeSegmentId}`,
         label: `Assessment for ${activeSegmentId}`,
-        tier: 'baseline',
-        isMandatory: true,
-        isCompleted: false,
+        category: 'baseline',
+        level: 'required',
+        blocking: true,
+        allowTechnicalOverride: true,
+        satisfied: false,
         reason: 'Manual technical exception documented by sonographer',
         targetSegmentId: activeSegmentId
       };
@@ -145,14 +141,14 @@ export const ScanWorksheetTab: React.FC<ScanWorksheetTabProps> = ({
       [override.requirementId]: override
     };
 
-    const newAuditLog = [
+    const newAuditLog: ProtocolAuditEvent[] = [
       ...(studyData.protocolAuditLog || []),
       {
         id: `audit_${Date.now()}`,
         timestamp: new Date().toISOString(),
-        eventType: 'exception_granted' as const,
+        type: 'EXCEPTION_RECORDED',
         description: `Technical waiver recorded for ${override.segmentId || override.requirementId}: ${override.reason} (${override.comment || 'No comment'})`,
-        author: override.sonographer
+        details: override.sonographer
       }
     ];
 
@@ -172,10 +168,6 @@ export const ScanWorksheetTab: React.FC<ScanWorksheetTabProps> = ({
     });
   };
 
-  // Live summaries for bottom overview
-  const rightSummary = generateSideSummary('right', studyData);
-  const leftSummary = generateSideSummary('left', studyData);
-
   const nascetRightSummary = studyData.nascet.right.longitudinal.calculatedStenosis !== null 
     ? `${studyData.nascet.right.longitudinal.calculatedStenosis}% (Long)` 
     : studyData.nascet.right.transverse.calculatedStenosis !== null 
@@ -193,177 +185,122 @@ export const ScanWorksheetTab: React.FC<ScanWorksheetTabProps> = ({
   };
 
   return (
-    <div id="scan-worksheet-tab-container" className="space-y-5">
+    <div id="scan-worksheet-tab-container" className="space-y-4">
       
-      {/* 1. Patient Demographics & Examination Profile Bar (Collapsible Header) */}
-      <PatientExaminationHeader
+      {/* 1. Clinical Details & Referral Context Panel */}
+      <ClinicalContextPanel
         studyData={studyData}
-        onUpdateStudy={onUpdateStudy}
-        onNavigateTab={onNavigateTab}
-      />
-
-      {/* 2. Clinical Indications & Context Section (with integrated Protocol Preset & complete wrapped chips) */}
-      <ClinicalContextSection
-        studyData={studyData}
+        examType="carotid"
         onUpdateStudy={onUpdateStudy}
       />
 
-      {/* 3. Active Findings & Hemodynamic Summary (Full-width summary above anatomical workspace) */}
-      <AbnormalCarotidFindingsPanel
-        studyData={studyData}
-        onSelectSegment={onSelectSegment}
-        onNavigateTab={(tab) => {
-          if (tab === 'plaque') setIsPlaqueExpanded(true);
-          else if (tab === 'nascet') setIsNascetExpanded(true);
-          else if (tab === 'associated') setIsAssociatedExpanded(true);
-          else if (tab === 'report') onNavigateTab('report');
-        }}
-      />
+      {/* 2. CAROTID ANATOMICAL MAP & HEMODYNAMIC WORKSPACE (Primary Workspace) */}
+      <section id="carotid-anatomical-workspace-section" className="space-y-3">
+        
+        {/* Workspace Toolbar: Title & Quick Normal Actions */}
+        <div className="bg-[#0b1329] border border-slate-800 p-2.5 sm:p-3 rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-md">
+          {/* Left: Section Title */}
+          <div className="flex items-center gap-2">
+            <Activity className="w-4 h-4 text-cyan-400" />
+            <h2 className="text-xs sm:text-sm font-black text-slate-100 uppercase tracking-tight">
+              CAROTID ANATOMICAL MAP & HEMODYNAMIC WORKSPACE
+            </h2>
+          </div>
 
-      {/* 4. Scanning View Switcher & Quick Normal Controls Bar */}
-      <div className="bg-[#0b1329] border border-slate-800 p-2.5 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md">
-        {/* Left: View Mode Toggle */}
-        <div className="flex items-center gap-1.5 bg-[#080d19] p-1 rounded-lg border border-slate-800 shrink-0">
-          <button
-            type="button"
-            id="btn-scan-view-diagram"
-            onClick={() => onSetAssessmentViewMode('diagram_tree')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold transition-all cursor-pointer ${
-              assessmentViewMode === 'diagram_tree'
-                ? 'bg-cyan-600 text-slate-950 font-black shadow-sm'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
-            }`}
-          >
-            <Layers className="w-3.5 h-3.5" />
-            <span>Anatomical Map & Tree</span>
-          </button>
-          <button
-            type="button"
-            id="btn-scan-view-matrix"
-            onClick={() => onSetAssessmentViewMode('matrix')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold transition-all cursor-pointer ${
-              assessmentViewMode === 'matrix'
-                ? 'bg-cyan-600 text-slate-950 font-black shadow-sm'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
-            }`}
-          >
-            <LayoutGrid className="w-3.5 h-3.5" />
-            <span>Bilateral Hemodynamic Matrix</span>
-          </button>
+          {/* Right: Quick Normal Actions */}
+          <div className="flex flex-wrap items-center gap-1.5 ml-auto md:ml-0">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider hidden lg:inline">
+              Quick Actions:
+            </span>
+            <button
+              type="button"
+              id="btn-quick-right-normal"
+              onClick={() => onMarkSideNormal('right')}
+              className="px-2.5 py-1 rounded-lg bg-[#0f172a] hover:bg-slate-800 border border-slate-700 text-[10.5px] font-bold text-slate-200 hover:text-cyan-300 transition-all cursor-pointer"
+              title="Mark all right carotid and vertebral segments normal"
+            >
+              Right Normal
+            </button>
+            <button
+              type="button"
+              id="btn-quick-left-normal"
+              onClick={() => onMarkSideNormal('left')}
+              className="px-2.5 py-1 rounded-lg bg-[#0f172a] hover:bg-slate-800 border border-slate-700 text-[10.5px] font-bold text-slate-200 hover:text-cyan-300 transition-all cursor-pointer"
+              title="Mark all left carotid and vertebral segments normal"
+            >
+              Left Normal
+            </button>
+            <button
+              type="button"
+              id="btn-quick-bilateral-normal"
+              onClick={() => {
+                onMarkSideNormal('right');
+                onMarkSideNormal('left');
+              }}
+              className="px-2.5 py-1 rounded-lg bg-emerald-950/40 hover:bg-emerald-900/60 border border-emerald-700 text-[10.5px] font-extrabold text-emerald-300 transition-all cursor-pointer shadow-xs"
+              title="Mark all bilateral segments normal"
+            >
+              ✓ Bilateral Normal
+            </button>
+          </div>
         </div>
 
-        {/* Right: Quick Normal Actions */}
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider hidden md:inline">
-            Quick Actions:
-          </span>
-          <button
-            type="button"
-            id="btn-quick-right-normal"
-            onClick={() => onMarkSideNormal('right')}
-            className="px-2.5 py-1 rounded-lg bg-[#0f172a] hover:bg-slate-800 border border-slate-700 text-[11px] font-bold text-slate-200 hover:text-cyan-300 transition-all cursor-pointer"
-            title="Mark all right carotid and vertebral segments normal"
-          >
-            Routine Right Normal
-          </button>
-          <button
-            type="button"
-            id="btn-quick-left-normal"
-            onClick={() => onMarkSideNormal('left')}
-            className="px-2.5 py-1 rounded-lg bg-[#0f172a] hover:bg-slate-800 border border-slate-700 text-[11px] font-bold text-slate-200 hover:text-cyan-300 transition-all cursor-pointer"
-            title="Mark all left carotid and vertebral segments normal"
-          >
-            Routine Left Normal
-          </button>
-          <button
-            type="button"
-            id="btn-quick-bilateral-normal"
-            onClick={() => {
-              onMarkSideNormal('right');
-              onMarkSideNormal('left');
-            }}
-            className="px-2.5 py-1 rounded-lg bg-emerald-950/40 hover:bg-emerald-900/60 border border-emerald-700 text-[11px] font-extrabold text-emerald-300 transition-all cursor-pointer shadow-sm"
-            title="Mark all bilateral segments normal"
-          >
-            ✓ Bilateral Normal
-          </button>
-        </div>
-      </div>
+        {/* Dynamic Protocol Contextual Trigger Alerts & Compact Status */}
+        <DynamicProtocolBanner
+          studyData={studyData}
+          evaluation={dynamicEvaluation}
+          onSelectSegment={(id) => {
+            onSelectSegment(id, false);
+            onSetActiveSegment(id);
+          }}
+          onOpenTechnicalModal={handleOpenTechModal}
+          onNavigateTab={onNavigateTab}
+        />
 
-      {/* 5. Carotid Anatomical Workspace & Detailed Assessment Grid */}
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 items-start">
-        {/* Main Vascular Workspace (8 cols) */}
-        <main className="xl:col-span-8 space-y-4">
-          {/* Dynamic Protocol Contextual Trigger Alerts & Compact Status */}
-          <DynamicProtocolBanner
-            studyData={studyData}
-            evaluation={dynamicEvaluation}
-            onSelectSegment={(id) => {
-              onSelectSegment(id, false);
-              onSetActiveSegment(id);
-            }}
-            onOpenTechnicalModal={handleOpenTechModal}
-            onNavigateTab={onNavigateTab}
-          />
-
-          {assessmentViewMode === 'diagram_tree' ? (
-            <>
-              {/* Interactive Anatomical Diagram with Variant Toolbar */}
-              <CarotidDiagram
-                studyData={studyData}
-                selectedSegmentIds={selectedSegmentIds}
-                activeSegmentId={activeSegmentId}
-                outstandingSegmentIds={outstandingSegmentIds}
-                onSelectSegment={onSelectSegment}
-                onAssessSegment={onAssessSegment}
-                onToggleVariant={() => onUpdateStudy({ variantLeftBct: !studyData.variantLeftBct })}
-                onUpdateStudy={onUpdateStudy}
-              />
-
-              {/* DVT-Style Left/Right Structured Vessel Trees */}
-              <VesselTreeList
-                studyData={studyData}
-                selectedSegmentIds={selectedSegmentIds}
-                activeSegmentId={activeSegmentId}
-                outstandingSegmentIds={outstandingSegmentIds}
-                onSelectSegment={onSelectSegment}
-                onAssessSegment={onAssessSegment}
-                onQuickMarkNormal={onQuickMarkNormal}
-                onMarkSideNormal={onMarkSideNormal}
-              />
-            </>
-          ) : (
-            /* Fast Matrix View */
-            <CarotidVesselMatrixView
+        {/* Carotid Anatomical Workspace & Detailed Assessment Grid */}
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 items-start">
+          {/* Main Vascular Workspace (7 cols) */}
+          <main className="xl:col-span-7 space-y-4">
+            {/* Interactive Anatomical Diagram with Variant Toolbar */}
+            <CarotidWorksheetMap
               studyData={studyData}
-              activeSegmentId={activeSegmentId}
               selectedSegmentIds={selectedSegmentIds}
+              activeSegmentId={activeSegmentId}
               outstandingSegmentIds={outstandingSegmentIds}
               onSelectSegment={onSelectSegment}
               onAssessSegment={onAssessSegment}
-              onUpdateSegment={onUpdateSegment}
-              onQuickMarkNormal={onQuickMarkNormal}
-              onMarkSideNormal={onMarkSideNormal}
+              onToggleVariant={() => onUpdateStudy({ variantLeftBct: !studyData.variantLeftBct })}
+              onUpdateStudy={onUpdateStudy}
             />
-          )}
-        </main>
+          </main>
 
-        {/* Sticky Right Side Assessment Panel (4 cols) */}
-        <aside className="xl:col-span-4 sticky top-[136px] h-[calc(100vh-160px)] flex flex-col">
-          <SegmentAssessment
-            studyData={studyData}
-            selectedIds={selectedSegmentIds}
-            activeId={activeSegmentId}
-            onSetActiveSegment={onSetActiveSegment}
-            onRemoveSelectedSegment={onRemoveSelectedSegment}
-            onUpdateSegment={onUpdateSegment}
-            onUpdateSegmentsBulk={onUpdateSegmentsBulk}
-            onAddPlaqueFromSegments={handleAddPlaqueFromSegments}
-          />
-        </aside>
-      </div>
+          {/* Sticky Right Side Assessment Panel (5 cols) */}
+          <aside className="xl:col-span-5 sticky top-[136px] h-[calc(100vh-160px)] flex flex-col">
+            <SegmentAssessment
+              studyData={studyData}
+              selectedIds={selectedSegmentIds}
+              activeId={activeSegmentId}
+              onSelectSegment={onSelectSegment}
+              onSetActiveSegment={onSetActiveSegment}
+              onRemoveSelectedSegment={onRemoveSelectedSegment}
+              onUpdateSegment={onUpdateSegment}
+              onUpdateSegmentsBulk={onUpdateSegmentsBulk}
+              onAddPlaqueFromSegments={handleAddPlaqueFromSegments}
+              onAddPlaque={onAddPlaque}
+              onUpdateStudy={onUpdateStudy}
+              onOpenNascet={(side) => {
+                setIsNascetExpanded(true);
+                const el = document.getElementById('nascet-calculator-container');
+                if (el) {
+                  el.scrollIntoView({ behavior: 'smooth' });
+                }
+              }}
+            />
+          </aside>
+        </div>
+      </section>
 
-      {/* 6. Detailed Pathology & Secondary Clinical Tools (Collapsible Accordions) */}
+      {/* 3. Detailed Pathology & Secondary Clinical Tools (Collapsible Accordions) */}
       <div className="space-y-4 pt-4 border-t border-slate-800">
         <div className="flex items-center justify-between">
           <h3 className="text-xs font-black text-slate-300 uppercase tracking-wider flex items-center gap-2">
@@ -498,14 +435,14 @@ export const ScanWorksheetTab: React.FC<ScanWorksheetTabProps> = ({
                   Consensus Criteria Reference Tables
                 </span>
                 <span className="ml-2 text-[10px] text-cyan-400 font-mono font-bold">
-                  Active: {studyData.classificationSystem.replace('_', ' ')}
+                  {studyData.classificationSystem.replace(/_/g, ' ')}
                 </span>
               </div>
             </div>
 
             <div className="flex items-center gap-2">
               <span className="text-[11px] font-bold text-cyan-400">
-                {isCriteriaExpanded ? 'Collapse' : 'View Guidelines & Thresholds'}
+                {isCriteriaExpanded ? 'Collapse' : 'Expand Reference'}
               </span>
               {isCriteriaExpanded ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
             </div>
@@ -521,42 +458,7 @@ export const ScanWorksheetTab: React.FC<ScanWorksheetTabProps> = ({
         </div>
       </div>
 
-      {/* 7. Live Study Impression Summary & Structured Report Navigation Banner */}
-      <div className="p-5 bg-[#0b1329] border border-cyan-700/80 rounded-xl shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="space-y-1">
-          <span className="text-[10px] font-extrabold text-cyan-400 uppercase tracking-wider flex items-center gap-1.5">
-            <Activity className="w-3.5 h-3.5" /> Real-time Hemodynamic Impression Preview
-          </span>
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-300">
-            <span>
-              Right ICA: <strong className="text-slate-100">{rightSummary.confirmedClassification || rightSummary.suggestedClassification}</strong> (PSV {rightSummary.highestIcaPsv ?? '—'} cm/s)
-            </span>
-            <span>•</span>
-            <span>
-              Left ICA: <strong className="text-slate-100">{leftSummary.confirmedClassification || leftSummary.suggestedClassification}</strong> (PSV {leftSummary.highestIcaPsv ?? '—'} cm/s)
-            </span>
-            <span>•</span>
-            <span>
-              Vertebrals: <strong className="text-slate-100 capitalize">R: {rightSummary.vertebralFlowDirection} / L: {leftSummary.vertebralFlowDirection}</strong>
-            </span>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 shrink-0">
-          <button
-            type="button"
-            id="btn-navigate-to-structured-report"
-            onClick={() => onNavigateTab('report')}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-black text-xs shadow-md transition-all cursor-pointer"
-          >
-            <FileText className="w-4 h-4" />
-            <span>Review Structured Report</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      </div>
-
-      {/* Technical Exception / Protocol Waiver Modal */}
+      {/* Technical Waiver & Exception Modal */}
       <TechnicalExceptionModal
         isOpen={isTechModalOpen}
         onClose={() => setIsTechModalOpen(false)}
@@ -564,7 +466,6 @@ export const ScanWorksheetTab: React.FC<ScanWorksheetTabProps> = ({
         studyData={studyData}
         onSaveOverride={handleSaveOverride}
       />
-
     </div>
   );
 };
