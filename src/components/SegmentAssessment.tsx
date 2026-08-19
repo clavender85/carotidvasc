@@ -616,6 +616,129 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
       stenosisPresent: isPresent,
       comments: isPresent ? `Stenosis grade: ${stenosisVal}` : ''
     });
+
+    // Auto initialize NASCET if stenosis is set to >=50% and not yet populated
+    if ((stenosisVal === '50-69%' || stenosisVal === '>=70%') && onUpdateStudy) {
+      const side = id.startsWith('r_') ? 'right' : 'left';
+      const sideNascet = studyData.nascet?.[side];
+      if (!sideNascet?.longitudinal?.minLumenA) {
+        const defaultA = stenosisVal === '>=70%' ? 1.4 : 2.0;
+        const defaultB = 5.0;
+        const calc = calculateNascetStenosis(defaultA, defaultB);
+        const updatedLong = {
+          plane: 'longitudinal' as const,
+          minLumenA: defaultA,
+          normalLumenB: defaultB,
+          calculatedStenosis: calc,
+        };
+        const sideKey = side === 'right' ? 'nascetRight' : 'nascetLeft';
+        onUpdateStudy({
+          nascet: {
+            ...(studyData.nascet || {
+              right: { longitudinal: { plane: 'longitudinal', minLumenA: null, normalLumenB: null, calculatedStenosis: null }, transverse: { plane: 'transverse', minLumenA: null, normalLumenB: null, calculatedStenosis: null } },
+              left: { longitudinal: { plane: 'longitudinal', minLumenA: null, normalLumenB: null, calculatedStenosis: null }, transverse: { plane: 'transverse', minLumenA: null, normalLumenB: null, calculatedStenosis: null } },
+            }),
+            [side]: {
+              ...(studyData.nascet?.[side] || { transverse: { plane: 'transverse', minLumenA: null, normalLumenB: null, calculatedStenosis: null } }),
+              longitudinal: updatedLong,
+            }
+          },
+          [sideKey]: {
+            ...(studyData[sideKey] || { side }),
+            longitudinal: updatedLong,
+            calculatedPercent: calc
+          }
+        });
+      }
+    }
+  };
+
+  // Handle NASCET Residual Lumen (A) Input Change
+  const handleNascetAChange = (side: 'right' | 'left', segId: string, valueStr: string) => {
+    const val = valueStr.trim() === '' ? null : parseFloat(valueStr);
+    const validNum = val !== null && !isNaN(val) && val >= 0 ? val : null;
+    
+    if (!onUpdateStudy) return;
+
+    const currentSideNascet = studyData.nascet?.[side] || {
+      longitudinal: { plane: 'longitudinal', minLumenA: null, normalLumenB: null, calculatedStenosis: null },
+      transverse: { plane: 'transverse', minLumenA: null, normalLumenB: null, calculatedStenosis: null },
+    };
+
+    const currentB = currentSideNascet.longitudinal?.normalLumenB ?? (side === 'right' ? studyData.nascetRight?.longitudinal?.normalLumenB : studyData.nascetLeft?.longitudinal?.normalLumenB) ?? 5.0;
+    const calc = calculateNascetStenosis(validNum, currentB);
+
+    const updatedLong = {
+      ...(currentSideNascet.longitudinal || { plane: 'longitudinal' }),
+      minLumenA: validNum,
+      normalLumenB: currentB,
+      calculatedStenosis: calc,
+    };
+
+    const sideKey = side === 'right' ? 'nascetRight' : 'nascetLeft';
+    const currentSideObj = studyData[sideKey] || { side };
+
+    onUpdateStudy({
+      nascet: {
+        ...(studyData.nascet || {
+          right: { longitudinal: { plane: 'longitudinal', minLumenA: null, normalLumenB: null, calculatedStenosis: null }, transverse: { plane: 'transverse', minLumenA: null, normalLumenB: null, calculatedStenosis: null } },
+          left: { longitudinal: { plane: 'longitudinal', minLumenA: null, normalLumenB: null, calculatedStenosis: null }, transverse: { plane: 'transverse', minLumenA: null, normalLumenB: null, calculatedStenosis: null } },
+        }),
+        [side]: {
+          ...currentSideNascet,
+          longitudinal: updatedLong,
+        }
+      },
+      [sideKey]: {
+        ...currentSideObj,
+        longitudinal: updatedLong,
+        calculatedPercent: calc
+      }
+    });
+  };
+
+  // Handle NASCET Normal Distal Lumen (B) Input Change
+  const handleNascetBChange = (side: 'right' | 'left', segId: string, valueStr: string) => {
+    const val = valueStr.trim() === '' ? null : parseFloat(valueStr);
+    const validNum = val !== null && !isNaN(val) && val > 0 ? val : null;
+    
+    if (!onUpdateStudy) return;
+
+    const currentSideNascet = studyData.nascet?.[side] || {
+      longitudinal: { plane: 'longitudinal', minLumenA: null, normalLumenB: null, calculatedStenosis: null },
+      transverse: { plane: 'transverse', minLumenA: null, normalLumenB: null, calculatedStenosis: null },
+    };
+
+    const currentA = currentSideNascet.longitudinal?.minLumenA ?? (side === 'right' ? studyData.nascetRight?.longitudinal?.minLumenA : studyData.nascetLeft?.longitudinal?.minLumenA) ?? 1.5;
+    const calc = calculateNascetStenosis(currentA, validNum);
+
+    const updatedLong = {
+      ...(currentSideNascet.longitudinal || { plane: 'longitudinal' }),
+      minLumenA: currentA,
+      normalLumenB: validNum,
+      calculatedStenosis: calc,
+    };
+
+    const sideKey = side === 'right' ? 'nascetRight' : 'nascetLeft';
+    const currentSideObj = studyData[sideKey] || { side };
+
+    onUpdateStudy({
+      nascet: {
+        ...(studyData.nascet || {
+          right: { longitudinal: { plane: 'longitudinal', minLumenA: null, normalLumenB: null, calculatedStenosis: null }, transverse: { plane: 'transverse', minLumenA: null, normalLumenB: null, calculatedStenosis: null } },
+          left: { longitudinal: { plane: 'longitudinal', minLumenA: null, normalLumenB: null, calculatedStenosis: null }, transverse: { plane: 'transverse', minLumenA: null, normalLumenB: null, calculatedStenosis: null } },
+        }),
+        [side]: {
+          ...currentSideNascet,
+          longitudinal: updatedLong,
+        }
+      },
+      [sideKey]: {
+        ...currentSideObj,
+        longitudinal: updatedLong,
+        calculatedPercent: calc
+      }
+    });
   };
 
   // Row selection handler (toggles selection & highlights map)
@@ -1001,203 +1124,331 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
                     const isPrimaryIcaLesion = isIca && (explicitMaxSite ? segId === explicitMaxSite : segId === sidePeakIcaId);
                     const isNascetLesion = isPrimaryIcaLesion && nascetVal !== null && (seg.plaquePresent || isSevereStenosis || isModerateStenosis || isHighPsv);
 
+                    // Stenosis over 50% check
+                    const isStenosisOver50 = isModerateStenosis || isSevereStenosis || isHighPsv || stenosisGrade === '50-69%' || stenosisGrade === '>=70%';
+
+                    // Distal CCA reference for hemodynamic ratio
+                    const refCca = studyData.segments[`${sidePrefix}cca_dist`] || studyData.segments[`${sidePrefix}cca_mid`];
+                    const refCcaPsv = refCca?.psv || 65;
+                    const calculatedRatio = (seg.psv !== null && refCcaPsv > 0) ? Number((seg.psv / refCcaPsv).toFixed(2)) : null;
+
+                    // Lumen diameters & NASCET calculation for this segment/side
+                    const currentLumenA = sideNascet?.longitudinal?.minLumenA ?? nascetCalc?.longitudinal?.minLumenA ?? (isSevereStenosis || isVeryHighPsv ? 1.4 : isModerateStenosis || isHighPsv ? 2.0 : 1.5);
+                    const currentLumenB = sideNascet?.longitudinal?.normalLumenB ?? nascetCalc?.longitudinal?.normalLumenB ?? 5.0;
+                    const calculatedNascet = calculateNascetStenosis(currentLumenA, currentLumenB);
+                    const calculatedAreaReduction = (currentLumenA !== null && currentLumenB !== null && currentLumenB > 0) 
+                      ? Number(((1 - Math.pow(currentLumenA / currentLumenB, 2)) * 100).toFixed(1)) 
+                      : null;
+
                     return (
-                      <tr
-                        key={segId}
-                        id={`worksheet-row-${segId}`}
-                        onClick={() => handleRowClick(segId)}
-                        className={`transition-colors cursor-pointer group ${
-                          isActive
-                            ? 'bg-cyan-950/40 hover:bg-cyan-950/50 border-l-2 border-cyan-400'
-                            : isSelected
-                            ? 'bg-slate-800/60 hover:bg-slate-800/80 border-l-2 border-cyan-600'
-                            : 'hover:bg-slate-800/30'
-                        }`}
-                      >
-                        {/* 1. Segment Label */}
-                        <td className="py-1.5 px-3">
-                          <div className="flex items-center gap-1.5">
-                            <span className={`text-xs font-semibold ${
-                              isActive ? 'text-cyan-200 font-bold' : isSelected ? 'text-slate-100' : 'text-slate-300'
-                            }`}>
-                              {meta?.shortName || meta?.name?.replace(/Right |Left /gi, '') || segId}
-                            </span>
-
-                            {/* NASCET lesion indicator - Only at the primary stenosis lesion */}
-                            {isNascetLesion && (
-                              <span className="text-[9px] px-1 py-0.2 bg-purple-500/20 text-purple-300 border border-purple-500/40 rounded font-mono font-bold">
-                                NASCET {Math.round(nascetVal!)}%
+                      <React.Fragment key={segId}>
+                        <tr
+                          id={`worksheet-row-${segId}`}
+                          onClick={() => handleRowClick(segId)}
+                          className={`transition-colors cursor-pointer group ${
+                            isActive
+                              ? 'bg-cyan-950/40 hover:bg-cyan-950/50 border-l-2 border-cyan-400'
+                              : isSelected
+                              ? 'bg-slate-800/60 hover:bg-slate-800/80 border-l-2 border-cyan-600'
+                              : 'hover:bg-slate-800/30'
+                          }`}
+                        >
+                          {/* 1. Segment Label */}
+                          <td className="py-1.5 px-3">
+                            <div className="flex items-center gap-1.5">
+                              <span className={`text-xs font-semibold ${
+                                isActive ? 'text-cyan-200 font-bold' : isSelected ? 'text-slate-100' : 'text-slate-300'
+                              }`}>
+                                {meta?.shortName || meta?.name?.replace(/Right |Left /gi, '') || segId}
                               </span>
-                            )}
 
-                            {/* Notes/Limitations indicator */}
-                            {seg.comments && (
-                              <span className="w-1.5 h-1.5 rounded-full bg-amber-400" title={`Note: ${seg.comments}`} />
-                            )}
-                          </div>
-                        </td>
+                              {/* NASCET lesion indicator - Only at the primary stenosis lesion */}
+                              {isNascetLesion && (
+                                <span className="text-[9px] px-1 py-0.2 bg-purple-500/20 text-purple-300 border border-purple-500/40 rounded font-mono font-bold">
+                                  NASCET {Math.round(nascetVal!)}%
+                                </span>
+                              )}
 
-                        {/* 2. PSV (Inline Numeric Input) */}
-                        <td className="py-1 px-1.5 text-center" onClick={(e) => e.stopPropagation()}>
-                          <input
-                            id={`input-psv-${segId}`}
-                            type="number"
-                            min="0"
-                            max="600"
-                            placeholder="—"
-                            value={seg.psv !== null && seg.psv !== undefined ? seg.psv : ''}
-                            onChange={(e) => handlePsvChange(segId, e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                (e.target as HTMLInputElement).blur();
-                              }
-                            }}
-                            className={`w-full py-1 px-1.5 text-center text-xs font-mono font-bold rounded border transition-colors outline-none focus:ring-1 focus:ring-cyan-400 ${
-                              isVeryHighPsv
-                                ? 'bg-red-950/50 border-red-500/60 text-red-300 shadow-inner'
-                                : isHighPsv
-                                ? 'bg-amber-950/40 border-amber-500/50 text-amber-300'
-                                : seg.psv !== null
-                                ? 'bg-[#070d1e] border-slate-700 text-slate-100 hover:border-slate-600'
-                                : 'bg-[#070d1e]/50 border-slate-800 text-slate-400 hover:border-slate-700'
-                            }`}
-                          />
-                        </td>
+                              {/* Notes/Limitations indicator */}
+                              {seg.comments && (
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-400" title={`Note: ${seg.comments}`} />
+                              )}
+                            </div>
+                          </td>
 
-                        {/* 3. EDV (Inline Numeric Input) */}
-                        <td className="py-1 px-1.5 text-center" onClick={(e) => e.stopPropagation()}>
-                          <input
-                            id={`input-edv-${segId}`}
-                            type="number"
-                            min="0"
-                            max="300"
-                            placeholder="—"
-                            value={seg.edv !== null && seg.edv !== undefined ? seg.edv : ''}
-                            onChange={(e) => handleEdvChange(segId, e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                (e.target as HTMLInputElement).blur();
-                              }
-                            }}
-                            className={`w-full py-1 px-1.5 text-center text-xs font-mono font-bold rounded border transition-colors outline-none focus:ring-1 focus:ring-cyan-400 ${
-                              seg.edv !== null && seg.edv >= 100
-                                ? 'bg-red-950/50 border-red-500/60 text-red-300'
-                                : seg.edv !== null && seg.edv >= 40
-                                ? 'bg-amber-950/40 border-amber-500/50 text-amber-300'
-                                : seg.edv !== null
-                                ? 'bg-[#070d1e] border-slate-700 text-slate-100 hover:border-slate-600'
-                                : 'bg-[#070d1e]/50 border-slate-800 text-slate-400 hover:border-slate-700'
-                            }`}
-                          />
-                        </td>
+                          {/* 2. PSV (Inline Numeric Input) */}
+                          <td className="py-1 px-1.5 text-center" onClick={(e) => e.stopPropagation()}>
+                            <input
+                              id={`input-psv-${segId}`}
+                              type="number"
+                              min="0"
+                              max="600"
+                              placeholder="—"
+                              value={seg.psv !== null && seg.psv !== undefined ? seg.psv : ''}
+                              onChange={(e) => handlePsvChange(segId, e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  (e.target as HTMLInputElement).blur();
+                                }
+                              }}
+                              className={`w-full py-1 px-1.5 text-center text-xs font-mono font-bold rounded border transition-colors outline-none focus:ring-1 focus:ring-cyan-400 ${
+                                isVeryHighPsv
+                                  ? 'bg-red-950/50 border-red-500/60 text-red-300 shadow-inner'
+                                  : isHighPsv
+                                  ? 'bg-amber-950/40 border-amber-500/50 text-amber-300'
+                                  : seg.psv !== null
+                                  ? 'bg-[#070d1e] border-slate-700 text-slate-100 hover:border-slate-600'
+                                  : 'bg-[#070d1e]/50 border-slate-800 text-slate-400 hover:border-slate-700'
+                              }`}
+                            />
+                          </td>
 
-                        {/* 4. Waveform (Inline Vessel-Specific Dropdown) */}
-                        <td className="py-1 px-1.5" onClick={(e) => e.stopPropagation()}>
-                          <select
-                            id={`select-waveform-${segId}`}
-                            value={seg.waveform || (segId.includes('subcl') ? 'Multiphasic' : segId.includes('vert') ? 'Normal antegrade' : 'Normal')}
-                            onChange={(e) => handleWaveformChange(segId, e.target.value)}
-                            className={`w-full py-1 px-1.5 text-[11px] rounded border transition-colors outline-none focus:ring-1 focus:ring-cyan-400 font-medium truncate ${
-                              isRetroFlow
-                                ? 'bg-red-950/50 border-red-500/50 text-red-300 font-bold'
-                                : seg.waveform && (seg.waveform.includes('Turbulent') || seg.waveform.includes('Dampened') || seg.waveform.includes('Tardus'))
-                                ? 'bg-amber-950/40 border-amber-500/40 text-amber-300'
-                                : 'bg-[#070d1e] border-slate-700/80 text-slate-200 hover:border-slate-600'
-                            }`}
+                          {/* 3. EDV (Inline Numeric Input) */}
+                          <td className="py-1 px-1.5 text-center" onClick={(e) => e.stopPropagation()}>
+                            <input
+                              id={`input-edv-${segId}`}
+                              type="number"
+                              min="0"
+                              max="300"
+                              placeholder="—"
+                              value={seg.edv !== null && seg.edv !== undefined ? seg.edv : ''}
+                              onChange={(e) => handleEdvChange(segId, e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  (e.target as HTMLInputElement).blur();
+                                }
+                              }}
+                              className={`w-full py-1 px-1.5 text-center text-xs font-mono font-bold rounded border transition-colors outline-none focus:ring-1 focus:ring-cyan-400 ${
+                                seg.edv !== null && seg.edv >= 100
+                                  ? 'bg-red-950/50 border-red-500/60 text-red-300'
+                                  : seg.edv !== null && seg.edv >= 40
+                                  ? 'bg-amber-950/40 border-amber-500/50 text-amber-300'
+                                  : seg.edv !== null
+                                  ? 'bg-[#070d1e] border-slate-700 text-slate-100 hover:border-slate-600'
+                                  : 'bg-[#070d1e]/50 border-slate-800 text-slate-400 hover:border-slate-700'
+                              }`}
+                            />
+                          </td>
+
+                          {/* 4. Waveform (Inline Vessel-Specific Dropdown) */}
+                          <td className="py-1 px-1.5" onClick={(e) => e.stopPropagation()}>
+                            <select
+                              id={`select-waveform-${segId}`}
+                              value={seg.waveform || (segId.includes('subcl') ? 'Multiphasic' : segId.includes('vert') ? 'Normal antegrade' : 'Normal')}
+                              onChange={(e) => handleWaveformChange(segId, e.target.value)}
+                              className={`w-full py-1 px-1.5 text-[11px] rounded border transition-colors outline-none focus:ring-1 focus:ring-cyan-400 font-medium truncate ${
+                                isRetroFlow
+                                  ? 'bg-red-950/50 border-red-500/50 text-red-300 font-bold'
+                                  : seg.waveform && (seg.waveform.includes('Turbulent') || seg.waveform.includes('Dampened') || seg.waveform.includes('Tardus'))
+                                  ? 'bg-amber-950/40 border-amber-500/40 text-amber-300'
+                                  : 'bg-[#070d1e] border-slate-700/80 text-slate-200 hover:border-slate-600'
+                              }`}
+                            >
+                              {waveformOptions.map(opt => (
+                                <option key={opt} value={opt} className="bg-[#0f172a] text-slate-200">
+                                  {opt}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+
+                          {/* 5. Plaque Type (Inline Dropdown: None / Echogenic / Hypoechoic / Calcified / Mixed) */}
+                          <td className="py-1 px-1.5" onClick={(e) => e.stopPropagation()}>
+                            <select
+                              id={`select-plaque-${segId}`}
+                              value={hasPlaque ? plaqueComp : 'none'}
+                              onChange={(e) => handlePlaqueCompositionChange(segId, e.target.value)}
+                              className={`w-full py-1 px-1 text-[11px] rounded border transition-colors outline-none focus:ring-1 focus:ring-cyan-400 font-medium capitalize ${
+                                plaqueComp === 'calcified'
+                                  ? 'bg-teal-950/50 border-teal-500/50 text-teal-300 font-semibold'
+                                  : plaqueComp === 'hypoechoic'
+                                  ? 'bg-amber-950/50 border-amber-500/50 text-amber-300 font-semibold'
+                                  : plaqueComp === 'mixed'
+                                  ? 'bg-purple-950/50 border-purple-500/50 text-purple-300 font-semibold'
+                                  : plaqueComp === 'echogenic'
+                                  ? 'bg-blue-950/40 border-blue-500/40 text-blue-300'
+                                  : 'bg-[#070d1e] border-slate-800 text-slate-400 hover:border-slate-700'
+                              }`}
+                            >
+                              <option value="none" className="bg-[#0f172a] text-slate-400">None</option>
+                              <option value="echogenic" className="bg-[#0f172a] text-blue-300 font-semibold">Echogenic</option>
+                              <option value="hypoechoic" className="bg-[#0f172a] text-amber-300 font-semibold">Hypoechoic</option>
+                              <option value="calcified" className="bg-[#0f172a] text-teal-300 font-semibold">Calcified</option>
+                              <option value="mixed" className="bg-[#0f172a] text-purple-300 font-semibold">Mixed</option>
+                            </select>
+                          </td>
+
+                          {/* 6. Plaque Surface (Inline Dropdown: — / Smooth / Irregular / Ulcerated) */}
+                          <td className="py-1 px-1.5" onClick={(e) => e.stopPropagation()}>
+                            <select
+                              id={`select-surface-${segId}`}
+                              value={hasPlaque ? plaqueSurface : 'none'}
+                              onChange={(e) => handlePlaqueSurfaceChange(segId, e.target.value)}
+                              className={`w-full py-1 px-1 text-[11px] rounded border transition-colors outline-none focus:ring-1 focus:ring-cyan-400 font-medium capitalize ${
+                                plaqueSurface === 'ulcerated'
+                                  ? 'bg-red-950/60 border-red-500/60 text-red-300 font-bold'
+                                  : plaqueSurface === 'irregular'
+                                  ? 'bg-amber-950/50 border-amber-500/50 text-amber-300 font-semibold'
+                                  : plaqueSurface === 'smooth' && hasPlaque
+                                  ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-300 font-medium'
+                                  : 'bg-[#070d1e] border-slate-800 text-slate-500 hover:border-slate-700'
+                              }`}
+                            >
+                              <option value="none" className="bg-[#0f172a] text-slate-500">—</option>
+                              <option value="smooth" className="bg-[#0f172a] text-emerald-300 font-medium">Smooth</option>
+                              <option value="irregular" className="bg-[#0f172a] text-amber-300 font-semibold">Irregular</option>
+                              <option value="ulcerated" className="bg-[#0f172a] text-red-300 font-bold">Ulcerated</option>
+                            </select>
+                          </td>
+
+                          {/* 7. Stenosis (Inline Dropdown) */}
+                          <td className="py-1 px-1.5" onClick={(e) => e.stopPropagation()}>
+                            <select
+                              id={`select-stenosis-${segId}`}
+                              value={stenosisGrade}
+                              onChange={(e) => handleStenosisChange(segId, e.target.value)}
+                              className={`w-full py-1 px-1 text-[11px] rounded border transition-colors outline-none focus:ring-1 focus:ring-cyan-400 font-medium ${
+                                isSevereStenosis
+                                  ? 'bg-red-950/50 border-red-500/50 text-red-300 font-bold'
+                                  : isModerateStenosis
+                                  ? 'bg-amber-950/40 border-amber-500/40 text-amber-300 font-bold'
+                                  : stenosisGrade === '<50%'
+                                  ? 'bg-blue-950/40 border-blue-500/40 text-blue-300'
+                                  : 'bg-[#070d1e] border-slate-800 text-slate-400 hover:border-slate-700'
+                              }`}
+                            >
+                              {stenosisOptions.map(opt => (
+                                <option key={opt.value} value={opt.value} className="bg-[#0f172a] text-slate-200">
+                                  {opt.label}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+
+                          {/* 8. Action Button (⋯) for Advanced Details */}
+                          <td className="py-1 px-1 text-center" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              id={`btn-advanced-${segId}`}
+                              onClick={() => setAdvancedDrawerSegmentId(segId)}
+                              title="Open Advanced Morphology & NASCET Details"
+                              className="p-1 rounded text-slate-400 hover:text-cyan-300 hover:bg-slate-800 transition-colors"
+                            >
+                              <MoreHorizontal className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+
+                        {/* Dedicated NASCET details & calculation subline when stenosis is over 50% */}
+                        {isStenosisOver50 && (
+                          <tr 
+                            id={`worksheet-nascet-subline-${segId}`}
+                            className="bg-[#091224]/95 border-l-2 border-purple-500 border-b border-purple-900/30 transition-colors"
                           >
-                            {waveformOptions.map(opt => (
-                              <option key={opt} value={opt} className="bg-[#0f172a] text-slate-200">
-                                {opt}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
+                            <td colSpan={8} className="py-2 px-3">
+                              <div className="flex flex-wrap items-center justify-between gap-3 text-xs">
+                                {/* 1. NASCET Criteria Label & Formula */}
+                                <div className="flex items-center gap-2">
+                                  <span className="flex items-center gap-1 text-purple-300 font-bold text-[10.5px] bg-purple-950/80 px-2 py-0.5 rounded border border-purple-500/40 shadow-sm">
+                                    <Sliders className="w-3 h-3 text-purple-400" />
+                                    NASCET
+                                  </span>
+                                  <span className="text-[11px] text-slate-300 font-medium">
+                                    Diameter: <code className="text-purple-300 font-mono text-[10.5px]">[(1 - A/B) × 100]</code>
+                                  </span>
+                                </div>
 
-                        {/* 5. Plaque Type (Inline Dropdown: None / Echogenic / Hypoechoic / Calcified / Mixed) */}
-                        <td className="py-1 px-1.5" onClick={(e) => e.stopPropagation()}>
-                          <select
-                            id={`select-plaque-${segId}`}
-                            value={hasPlaque ? plaqueComp : 'none'}
-                            onChange={(e) => handlePlaqueCompositionChange(segId, e.target.value)}
-                            className={`w-full py-1 px-1 text-[11px] rounded border transition-colors outline-none focus:ring-1 focus:ring-cyan-400 font-medium capitalize ${
-                              plaqueComp === 'calcified'
-                                ? 'bg-teal-950/50 border-teal-500/50 text-teal-300 font-semibold'
-                                : plaqueComp === 'hypoechoic'
-                                ? 'bg-amber-950/50 border-amber-500/50 text-amber-300 font-semibold'
-                                : plaqueComp === 'mixed'
-                                ? 'bg-purple-950/50 border-purple-500/50 text-purple-300 font-semibold'
-                                : plaqueComp === 'echogenic'
-                                ? 'bg-blue-950/40 border-blue-500/40 text-blue-300'
-                                : 'bg-[#070d1e] border-slate-800 text-slate-400 hover:border-slate-700'
-                            }`}
-                          >
-                            <option value="none" className="bg-[#0f172a] text-slate-400">None</option>
-                            <option value="echogenic" className="bg-[#0f172a] text-blue-300 font-semibold">Echogenic</option>
-                            <option value="hypoechoic" className="bg-[#0f172a] text-amber-300 font-semibold">Hypoechoic</option>
-                            <option value="calcified" className="bg-[#0f172a] text-teal-300 font-semibold">Calcified</option>
-                            <option value="mixed" className="bg-[#0f172a] text-purple-300 font-semibold">Mixed</option>
-                          </select>
-                        </td>
+                                {/* 2. Interactive Diameter Inputs (Residual A & Distal Normal B) */}
+                                <div className="flex items-center gap-3">
+                                  <div className="flex items-center gap-1.5" title="Residual lumen diameter at maximum stenosis (mm)">
+                                    <label className="text-[11px] font-semibold text-slate-300">
+                                      Resid. Lumen (A):
+                                    </label>
+                                    <div className="flex items-center">
+                                      <input
+                                        id={`input-nascet-a-${segId}`}
+                                        type="number"
+                                        step="0.1"
+                                        min="0"
+                                        max="10"
+                                        placeholder="1.5"
+                                        value={currentLumenA !== null && currentLumenA !== undefined ? currentLumenA : ''}
+                                        onChange={(e) => handleNascetAChange(group.side, segId, e.target.value)}
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="w-16 py-0.5 px-1.5 text-center text-xs font-mono font-bold bg-[#070d1e] border border-purple-500/60 focus:border-purple-400 rounded text-purple-200 outline-none"
+                                      />
+                                      <span className="text-[10px] text-slate-400 ml-1">mm</span>
+                                    </div>
+                                  </div>
 
-                        {/* 6. Plaque Surface (Inline Dropdown: — / Smooth / Irregular / Ulcerated) */}
-                        <td className="py-1 px-1.5" onClick={(e) => e.stopPropagation()}>
-                          <select
-                            id={`select-surface-${segId}`}
-                            value={hasPlaque ? plaqueSurface : 'none'}
-                            onChange={(e) => handlePlaqueSurfaceChange(segId, e.target.value)}
-                            className={`w-full py-1 px-1 text-[11px] rounded border transition-colors outline-none focus:ring-1 focus:ring-cyan-400 font-medium capitalize ${
-                              plaqueSurface === 'ulcerated'
-                                ? 'bg-red-950/60 border-red-500/60 text-red-300 font-bold'
-                                : plaqueSurface === 'irregular'
-                                ? 'bg-amber-950/50 border-amber-500/50 text-amber-300 font-semibold'
-                                : plaqueSurface === 'smooth' && hasPlaque
-                                ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-300 font-medium'
-                                : 'bg-[#070d1e] border-slate-800 text-slate-500 hover:border-slate-700'
-                            }`}
-                          >
-                            <option value="none" className="bg-[#0f172a] text-slate-500">—</option>
-                            <option value="smooth" className="bg-[#0f172a] text-emerald-300 font-medium">Smooth</option>
-                            <option value="irregular" className="bg-[#0f172a] text-amber-300 font-semibold">Irregular</option>
-                            <option value="ulcerated" className="bg-[#0f172a] text-red-300 font-bold">Ulcerated</option>
-                          </select>
-                        </td>
+                                  <div className="flex items-center gap-1.5" title="Normal distal ICA reference lumen diameter (mm)">
+                                    <label className="text-[11px] font-semibold text-slate-300">
+                                      Distal Ref (B):
+                                    </label>
+                                    <div className="flex items-center">
+                                      <input
+                                        id={`input-nascet-b-${segId}`}
+                                        type="number"
+                                        step="0.1"
+                                        min="0.1"
+                                        max="15"
+                                        placeholder="5.0"
+                                        value={currentLumenB !== null && currentLumenB !== undefined ? currentLumenB : ''}
+                                        onChange={(e) => handleNascetBChange(group.side, segId, e.target.value)}
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="w-16 py-0.5 px-1.5 text-center text-xs font-mono font-bold bg-[#070d1e] border border-purple-500/60 focus:border-purple-400 rounded text-purple-200 outline-none"
+                                      />
+                                      <span className="text-[10px] text-slate-400 ml-1">mm</span>
+                                    </div>
+                                  </div>
+                                </div>
 
-                        {/* 7. Stenosis (Inline Dropdown) */}
-                        <td className="py-1 px-1.5" onClick={(e) => e.stopPropagation()}>
-                          <select
-                            id={`select-stenosis-${segId}`}
-                            value={stenosisGrade}
-                            onChange={(e) => handleStenosisChange(segId, e.target.value)}
-                            className={`w-full py-1 px-1 text-[11px] rounded border transition-colors outline-none focus:ring-1 focus:ring-cyan-400 font-medium ${
-                              isSevereStenosis
-                                ? 'bg-red-950/50 border-red-500/50 text-red-300 font-bold'
-                                : isModerateStenosis
-                                ? 'bg-amber-950/40 border-amber-500/40 text-amber-300 font-bold'
-                                : stenosisGrade === '<50%'
-                                ? 'bg-blue-950/40 border-blue-500/40 text-blue-300'
-                                : 'bg-[#070d1e] border-slate-800 text-slate-400 hover:border-slate-700'
-                            }`}
-                          >
-                            {stenosisOptions.map(opt => (
-                              <option key={opt.value} value={opt.value} className="bg-[#0f172a] text-slate-200">
-                                {opt.label}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
+                                {/* 3. Calculated Reduction % & Ratio */}
+                                <div className="flex items-center gap-2 font-mono">
+                                  {/* Calculated NASCET % */}
+                                  <div className="flex items-center gap-1.5 bg-[#070d1e] px-2 py-0.5 rounded border border-purple-500/40">
+                                    <span className="text-[10px] text-purple-300 font-sans font-semibold">NASCET:</span>
+                                    <span className="text-xs font-black text-purple-200">
+                                      {calculatedNascet !== null ? `${calculatedNascet}%` : '—'}
+                                    </span>
+                                    {calculatedNascet !== null && (
+                                      <span className={`text-[9px] px-1 py-0.2 rounded font-sans font-bold ${
+                                        calculatedNascet >= 70
+                                          ? 'bg-rose-950 text-rose-300 border border-rose-500/40'
+                                          : calculatedNascet >= 50
+                                          ? 'bg-amber-950 text-amber-300 border border-amber-500/40'
+                                          : 'bg-cyan-950 text-cyan-300 border border-cyan-500/40'
+                                      }`}>
+                                        {calculatedNascet >= 70 ? '≥70% Severe' : calculatedNascet >= 50 ? '50-69% Mod' : '<50% Mild'}
+                                      </span>
+                                    )}
+                                  </div>
 
-                        {/* 8. Action Button (⋯) for Advanced Details */}
-                        <td className="py-1 px-1 text-center" onClick={(e) => e.stopPropagation()}>
-                          <button
-                            id={`btn-advanced-${segId}`}
-                            onClick={() => setAdvancedDrawerSegmentId(segId)}
-                            title="Open Advanced Morphology & NASCET Details"
-                            className="p-1 rounded text-slate-400 hover:text-cyan-300 hover:bg-slate-800 transition-colors"
-                          >
-                            <MoreHorizontal className="w-3.5 h-3.5" />
-                          </button>
-                        </td>
-                      </tr>
+                                  {/* Area Reduction % */}
+                                  {calculatedAreaReduction !== null && (
+                                    <div className="hidden lg:flex items-center gap-1 bg-[#070d1e] px-2 py-0.5 rounded border border-slate-700/60" title="Calculated Luminal Area Reduction = [1 - (A/B)²] × 100">
+                                      <span className="text-[10px] text-slate-400 font-sans">Area Loss:</span>
+                                      <span className="text-[11px] font-bold text-slate-200">{calculatedAreaReduction}%</span>
+                                    </div>
+                                  )}
+
+                                  {/* ICA / CCA Ratio */}
+                                  {calculatedRatio !== null && (
+                                    <div className="flex items-center gap-1 bg-[#070d1e] px-2 py-0.5 rounded border border-slate-700/80" title={`ICA/CCA Ratio = ${seg.psv} / ${refCcaPsv}`}>
+                                      <span className="text-[10px] text-slate-400 font-sans font-medium">ICA/CCA Ratio:</span>
+                                      <span className={`text-xs font-bold ${calculatedRatio >= 4.0 ? 'text-rose-300 font-black' : calculatedRatio >= 2.0 ? 'text-amber-300 font-bold' : 'text-cyan-300'}`}>
+                                        {calculatedRatio.toFixed(2)}
+                                      </span>
+                                      <span className="text-[9px] text-slate-400 font-sans">
+                                        {calculatedRatio >= 4.0 ? '(≥4.0 Severe)' : calculatedRatio >= 2.0 ? '(≥2.0 Mod)' : '(<2.0)'}
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
                     );
                   })}
                 </React.Fragment>
