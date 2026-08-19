@@ -1104,9 +1104,31 @@ export const CarotidWorksheetMap: React.FC<CarotidWorksheetMapProps> = ({
               const isSevere = isStenotic && (psvVal >= 230 || s.comments.toLowerCase().includes('severe') || s.comments.toLowerCase().includes('70') || s.comments.toLowerCase().includes('95') || (isIcaOrBulb && sideEval?.category.includes('Severe')));
               const isModerate = !isSevere && (isStenotic || psvVal >= 125) && (psvVal >= 125 || s.comments.toLowerCase().includes('moderate') || s.comments.toLowerCase().includes('50') || (isIcaOrBulb && sideEval?.category.includes('Moderate')));
 
-              const sideNascet = meta.side ? studyData.nascet[meta.side as 'right' | 'left'] : undefined;
-              const nascetVal = sideNascet?.longitudinal?.calculatedStenosis ?? sideNascet?.transverse?.calculatedStenosis ?? null;
-              const showNascet = isIcaOrBulb && nascetVal !== null && nascetVal > 50;
+              const sideNascet = meta.side ? (studyData.nascet ? studyData.nascet[meta.side as 'right' | 'left'] : undefined) : undefined;
+              const nascetVal = sideNascet?.longitudinal?.calculatedStenosis ?? sideNascet?.transverse?.calculatedStenosis ?? (meta.side === 'right' ? studyData.nascetRight?.calculatedPercent : studyData.nascetLeft?.calculatedPercent) ?? null;
+              
+              // Determine if this exact segment is the primary stenosis / plaque lesion site
+              const sidePrefix = meta.side === 'right' ? 'r_' : 'l_';
+              const sideIcaPlaques = studyData.plaques.filter(p => p.segments.some(segId => segId.startsWith(sidePrefix)));
+              const explicitMaxSite = sideIcaPlaques.find(p => p.maxPlaqueSite)?.maxPlaqueSite;
+              
+              // Find the ICA segment with peak velocity on this side
+              const sideIcaIds = [`${sidePrefix}ica_prox`, `${sidePrefix}ica_mid`, `${sidePrefix}ica_dist`];
+              let peakIcaId = `${sidePrefix}ica_prox`;
+              let maxIcaPsv = -1;
+              sideIcaIds.forEach(segId => {
+                const segPsv = studyData.segments[segId]?.psv ?? -1;
+                if (segPsv > maxIcaPsv) {
+                  maxIcaPsv = segPsv;
+                  peakIcaId = segId;
+                }
+              });
+
+              const isPrimaryLesionSite = explicitMaxSite ? (id === explicitMaxSite) : (id === peakIcaId);
+              const isStenoticOrAtheroma = s.stenosisPresent || (s.psv !== null && s.psv >= 125) || s.plaquePresent;
+
+              // NASCET should ONLY appear at the focal stenosis site, never on the rest of the normal vessel
+              const showNascet = isIcaOrBulb && isPrimaryLesionSite && isStenoticOrAtheroma && nascetVal !== null && nascetVal > 0;
 
               return (
                 <g

@@ -17,7 +17,10 @@ import {
   X, 
   MoreHorizontal, 
   ExternalLink,
-  CheckCircle2
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  AlertTriangle
 } from 'lucide-react';
 
 interface SegmentAssessmentProps {
@@ -32,7 +35,7 @@ interface SegmentAssessmentProps {
   onAddPlaqueFromSegments?: (ids: string[]) => void;
   onAddPlaque?: (plaque: PlaqueData) => void;
   onUpdateStudy?: (updates: Partial<StudyData>) => void;
-  onOpenNascet: (side: 'right' | 'left') => void;
+  onOpenNascet?: (side: 'right' | 'left') => void;
 }
 
 // Groupings for structured anatomy
@@ -54,7 +57,6 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
   onUpdateSegmentsBulk,
   onAddPlaque,
   onUpdateStudy,
-  onOpenNascet,
 }) => {
   // Tab state
   const [activeSideTab, setActiveSideTab] = useState<'right' | 'left' | 'bilateral'>('right');
@@ -81,26 +83,88 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
     }
   }, [activeId]);
 
-  // Define segments for Right and Left
+  // Define segments for Right and Left in clinical order: CCA -> Bulb -> ICA -> ECA -> Vert -> Subclavian
   const rightSegmentIds = [
-    'r_subcl_prox', 'r_subcl_dist',
-    'r_vert_prox', 'r_vert_mid', 'r_vert_dist',
     'r_cca_prox', 'r_cca_mid', 'r_cca_dist',
     'r_bulb',
     'r_ica_prox', 'r_ica_mid', 'r_ica_dist',
-    'r_eca_prox', 'r_eca_dist'
+    'r_eca_prox', 'r_eca_dist',
+    'r_vert_prox', 'r_vert_mid', 'r_vert_dist',
+    'r_subcl_prox', 'r_subcl_dist'
   ];
 
   const leftSegmentIds = [
-    'l_subcl_prox', 'l_subcl_dist',
-    'l_vert_prox', 'l_vert_mid', 'l_vert_dist',
     'l_cca_prox', 'l_cca_mid', 'l_cca_dist',
     'l_bulb',
     'l_ica_prox', 'l_ica_mid', 'l_ica_dist',
-    'l_eca_prox', 'l_eca_dist'
+    'l_eca_prox', 'l_eca_dist',
+    'l_vert_prox', 'l_vert_mid', 'l_vert_dist',
+    'l_subcl_prox', 'l_subcl_dist'
   ];
 
-  // Define vessel groups for clean header summaries
+  // Manual expand/collapse state for optional Subclavian Artery (keyed by side)
+  const [subclavianManualToggle, setSubclavianManualToggle] = useState<Record<string, boolean>>({});
+
+  // Helper to detect if a vertebral artery has atypical / steal waveforms or abnormal flow
+  const isVertAtypical = (side: 'right' | 'left'): { atypical: boolean; reason?: string } => {
+    const prefix = side === 'right' ? 'r_' : 'l_';
+    const p = studyData.segments[`${prefix}vert_prox`];
+    const m = studyData.segments[`${prefix}vert_mid`];
+    const d = studyData.segments[`${prefix}vert_dist`];
+    const segs = [p, m, d].filter(Boolean);
+
+    for (const seg of segs) {
+      if (seg.flowDirection === 'retrograde') {
+        return { atypical: true, reason: 'Retrograde Flow (Subclavian Steal)' };
+      }
+      if (seg.flowDirection === 'bidirectional') {
+        return { atypical: true, reason: 'Bidirectional Flow (Partial Steal)' };
+      }
+      const wf = (seg.waveform || '').toLowerCase();
+      if (wf.includes('retrograde') || wf.includes('reversal')) {
+        return { atypical: true, reason: 'Retrograde Waveform (Steal)' };
+      }
+      if (wf.includes('bunny') || wf.includes('steal') || wf.includes('deceleration') || wf.includes('early systolic')) {
+        return { atypical: true, reason: 'Bunny / Pre-Steal Pattern' };
+      }
+      if (wf.includes('high resistance') || wf.includes('dampened') || wf.includes('tardus')) {
+        return { atypical: true, reason: `${seg.waveform}` };
+      }
+      if (wf.includes('absent') || seg.stenosisPresent) {
+        return { atypical: true, reason: 'Severe Pathology / Stenosis' };
+      }
+      if (seg.psv !== null && (seg.psv > 120 || seg.psv < 12)) {
+        return { atypical: true, reason: `Abnormal Velocity (${seg.psv} cm/s)` };
+      }
+    }
+    return { atypical: false };
+  };
+
+  // Helper to check if user has documented data in Subclavian
+  const hasSubclavianData = (side: 'right' | 'left'): boolean => {
+    const prefix = side === 'right' ? 'r_' : 'l_';
+    const p = studyData.segments[`${prefix}subcl_prox`];
+    const d = studyData.segments[`${prefix}subcl_dist`];
+    return [p, d].some(s => s && (
+      s.psv !== null ||
+      s.edv !== null ||
+      s.plaquePresent ||
+      s.stenosisPresent ||
+      (s.waveform && s.waveform !== 'Not assessed' && s.waveform !== 'Multiphasic') ||
+      Boolean(s.comments)
+    ));
+  };
+
+  // Subclavian visibility evaluator
+  const getIsSubclavianExpanded = (side: 'right' | 'left'): boolean => {
+    if (subclavianManualToggle[side] !== undefined) {
+      return subclavianManualToggle[side];
+    }
+    // Auto-expand if vertebral is atypical OR if subclavian already has documented data
+    return isVertAtypical(side).atypical || hasSubclavianData(side);
+  };
+
+  // Define vessel groups in strict clinical sequence: CCA -> Bulb -> ICA -> ECA -> Vertebral -> Subclavian (±)
   const vesselGroups: VesselGroup[] = useMemo(() => {
     const sides: ('right' | 'left')[] = activeSideTab === 'bilateral' ? ['right', 'left'] : [activeSideTab];
     const groups: VesselGroup[] = [];
@@ -109,20 +173,7 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
       const prefix = side === 'right' ? 'r_' : 'l_';
       const sideLabel = side === 'right' ? 'Right' : 'Left';
 
-      groups.push({
-        name: `${sideLabel} Subclavian Artery`,
-        vesselKey: 'subclavian',
-        side,
-        segmentIds: [`${prefix}subcl_prox`, `${prefix}subcl_dist`]
-      });
-
-      groups.push({
-        name: `${sideLabel} Vertebral Artery`,
-        vesselKey: 'vertebral',
-        side,
-        segmentIds: [`${prefix}vert_prox`, `${prefix}vert_mid`, `${prefix}vert_dist`]
-      });
-
+      // 1. Common Carotid (CCA)
       groups.push({
         name: `${sideLabel} Common Carotid (CCA)`,
         vesselKey: 'cca',
@@ -130,6 +181,7 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
         segmentIds: [`${prefix}cca_prox`, `${prefix}cca_mid`, `${prefix}cca_dist`]
       });
 
+      // 2. Carotid Bulb
       groups.push({
         name: `${sideLabel} Carotid Bulb`,
         vesselKey: 'bulb',
@@ -137,6 +189,7 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
         segmentIds: [`${prefix}bulb`]
       });
 
+      // 3. Internal Carotid (ICA)
       groups.push({
         name: `${sideLabel} Internal Carotid (ICA)`,
         vesselKey: 'ica',
@@ -144,11 +197,28 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
         segmentIds: [`${prefix}ica_prox`, `${prefix}ica_mid`, `${prefix}ica_dist`]
       });
 
+      // 4. External Carotid (ECA)
       groups.push({
         name: `${sideLabel} External Carotid (ECA)`,
         vesselKey: 'eca',
         side,
         segmentIds: [`${prefix}eca_prox`, `${prefix}eca_dist`]
+      });
+
+      // 5. Vertebral Artery
+      groups.push({
+        name: `${sideLabel} Vertebral Artery`,
+        vesselKey: 'vertebral',
+        side,
+        segmentIds: [`${prefix}vert_prox`, `${prefix}vert_mid`, `${prefix}vert_dist`]
+      });
+
+      // 6. Subclavian Artery (±)
+      groups.push({
+        name: `${sideLabel} Subclavian Artery (±)`,
+        vesselKey: 'subclavian',
+        side,
+        segmentIds: [`${prefix}subcl_prox`, `${prefix}subcl_dist`]
       });
     });
 
@@ -173,7 +243,7 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
     const d = studyData.segments[`${prefix}vert_dist`];
     const anyRetro = [p, m, d].some(s => s?.flowDirection === 'retrograde' || s?.waveform?.toLowerCase().includes('retrograde') || s?.waveform?.toLowerCase().includes('reversal'));
     const anySteal = [p, m, d].some(s => s?.flowDirection === 'bidirectional' || s?.waveform?.toLowerCase().includes('steal') || s?.waveform?.toLowerCase().includes('deceleration') || s?.waveform?.toLowerCase().includes('bunny'));
-    if (anyRetro) return { text: '⚠ Retrograde / Reversal', isAbnormal: true };
+    if (anyRetro) return { text: '⚠ Retrograde / Reversal (Steal)', isAbnormal: true };
     if (anySteal) return { text: '⚠ Pre-Steal / Bidirectional', isAbnormal: true };
     return { text: 'Antegrade Flow', isAbnormal: false };
   };
@@ -185,6 +255,14 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
       const refVal = side === 'right' ? rCcaRefVal : lCcaRefVal;
       return refVal ? `REF PSV ${refVal}` : 'Distal CCA Ref';
     }
+    if (group.vesselKey === 'bulb') {
+      const bulbSeg = studyData.segments[`${side === 'right' ? 'r_' : 'l_'}bulb`];
+      const plaque = studyData.plaques.find(p => p.segments.includes(`${side === 'right' ? 'r_' : 'l_'}bulb`));
+      if (bulbSeg?.plaquePresent) {
+        return `Plaque: ${plaque?.luminalNarrowingVisible || 'Present'}`;
+      }
+      return 'Flow Separation';
+    }
     if (group.vesselKey === 'ica') {
       const peak = side === 'right' ? rIcaPeak : lIcaPeak;
       const ratio = side === 'right' ? rIcaCcaRatio : lIcaCcaRatio;
@@ -193,7 +271,6 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
       
       const suggestedResult = suggestIcaStenosisCategory(side, studyData);
       const suggestedCategory = suggestedResult?.category || '';
-      const isSevere = suggestedCategory.includes('70%') || suggestedCategory.includes('50-69%') || suggestedCategory.includes('Near') || suggestedCategory.includes('Occlusion');
 
       const parts: string[] = [];
       if (suggestedCategory && !suggestedCategory.includes('Normal') && !suggestedCategory.includes('<50%') && !suggestedCategory.includes('mild')) {
@@ -211,32 +288,35 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
 
       return parts.length > 0 ? parts.join(' | ') : 'Normal Low Resistance';
     }
-    if (group.vesselKey === 'vertebral') {
-      const vert = getVertSummary(side);
-      return vert.text;
-    }
-    if (group.vesselKey === 'subclavian') {
-      const prox = studyData.segments[`${side === 'right' ? 'r_' : 'l_'}subcl_prox`];
-      const dist = studyData.segments[`${side === 'right' ? 'r_' : 'l_'}subcl_dist`];
-      if ((prox?.psv && prox.psv > 150) || (dist?.psv && dist.psv > 150)) {
-        return '⚠ High Velocity Jet';
-      }
-      return 'Multiphasic Flow';
-    }
-    if (group.vesselKey === 'bulb') {
-      const bulbSeg = studyData.segments[`${side === 'right' ? 'r_' : 'l_'}bulb`];
-      const plaque = studyData.plaques.find(p => p.segments.includes(`${side === 'right' ? 'r_' : 'l_'}bulb`));
-      if (bulbSeg?.plaquePresent) {
-        return `Plaque: ${plaque?.luminalNarrowingVisible || 'Present'}`;
-      }
-      return 'Flow Separation';
-    }
     if (group.vesselKey === 'eca') {
       const ecaProx = studyData.segments[`${side === 'right' ? 'r_' : 'l_'}eca_prox`];
       if (ecaProx?.psv && ecaProx.psv > 150) {
         return `PSV ${ecaProx.psv} | High Resistance`;
       }
       return 'High Resistance';
+    }
+    if (group.vesselKey === 'vertebral') {
+      const vert = getVertSummary(side);
+      const vertAtypical = isVertAtypical(side);
+      if (vertAtypical.atypical) {
+        return `⚠ ${vertAtypical.reason || vert.text} → Check Subclavian`;
+      }
+      return vert.text;
+    }
+    if (group.vesselKey === 'subclavian') {
+      const prox = studyData.segments[`${side === 'right' ? 'r_' : 'l_'}subcl_prox`];
+      const dist = studyData.segments[`${side === 'right' ? 'r_' : 'l_'}subcl_dist`];
+      const vertAtypical = isVertAtypical(side);
+      if (vertAtypical.atypical) {
+        return `⚠ Investigation Prompted (${vertAtypical.reason})`;
+      }
+      if ((prox?.psv && prox.psv > 150) || (dist?.psv && dist.psv > 150)) {
+        return '⚠ High Velocity Jet';
+      }
+      if (hasSubclavianData(side)) {
+        return 'Documented Flow';
+      }
+      return 'Optional (±)';
     }
     return '';
   };
@@ -694,7 +774,11 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
             {vesselGroups.map((group) => {
               const groupSummary = getGroupSummary(group);
               const isIca = group.vesselKey === 'ica';
+              const isSubclavian = group.vesselKey === 'subclavian';
               const isAbnormalGroup = groupSummary.includes('≥70%') || groupSummary.includes('50–69%') || groupSummary.includes('⚠') || groupSummary.includes('70');
+              
+              const isSubclavianOpen = isSubclavian ? getIsSubclavianExpanded(group.side) : true;
+              const vertAtypicalInfo = isSubclavian ? isVertAtypical(group.side) : { atypical: false };
 
               return (
                 <React.Fragment key={`${group.side}_${group.vesselKey}`}>
@@ -707,21 +791,102 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
                           {group.name}
                         </span>
                         
-                        {groupSummary && (
-                          <span className={`text-[10px] px-2 py-0.5 rounded font-mono font-medium ${
-                            isAbnormalGroup 
-                              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' 
-                              : 'bg-slate-800 text-slate-300 border border-slate-700/50'
-                          }`}>
-                            {groupSummary}
-                          </span>
-                        )}
+                        <div className="flex items-center gap-2">
+                          {groupSummary && (
+                            <span className={`text-[10px] px-2 py-0.5 rounded font-mono font-medium ${
+                              isAbnormalGroup 
+                                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' 
+                                : 'bg-slate-800 text-slate-300 border border-slate-700/50'
+                            }`}>
+                              {groupSummary}
+                            </span>
+                          )}
+
+                          {/* Subclavian Expand/Collapse Interactive Trigger */}
+                          {isSubclavian && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSubclavianManualToggle(prev => ({
+                                  ...prev,
+                                  [group.side]: !isSubclavianOpen
+                                }));
+                              }}
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-colors flex items-center gap-1 ${
+                                isSubclavianOpen
+                                  ? 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-600'
+                                  : vertAtypicalInfo.atypical
+                                  ? 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border-amber-500/40 animate-pulse'
+                                  : 'bg-cyan-950/40 hover:bg-cyan-900/60 text-cyan-300 border-cyan-700/50'
+                              }`}
+                            >
+                              {isSubclavianOpen ? (
+                                <>
+                                  <span>Collapse</span>
+                                  <ChevronUp className="w-3 h-3" />
+                                </>
+                              ) : (
+                                <>
+                                  <span>{vertAtypicalInfo.atypical ? 'Investigate Subclavian' : '+ Expand (±)'}</span>
+                                  <ChevronDown className="w-3 h-3" />
+                                </>
+                              )}
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </td>
                   </tr>
 
-                  {/* VESSEL SEGMENTS IN THIS GROUP */}
-                  {group.segmentIds.map((segId, segIdx) => {
+                  {/* SUBCLAVIAN COLLAPSED BANNER */}
+                  {isSubclavian && !isSubclavianOpen && (
+                    <tr 
+                      onClick={() => setSubclavianManualToggle(prev => ({ ...prev, [group.side]: true }))}
+                      className={`cursor-pointer transition-colors border-b border-slate-800/80 ${
+                        vertAtypicalInfo.atypical
+                          ? 'bg-amber-950/30 hover:bg-amber-950/50 border-amber-500/40'
+                          : 'bg-[#090f20]/60 hover:bg-[#0d162f]'
+                      }`}
+                    >
+                      <td colSpan={7} className="py-2 px-3">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <div className="flex items-center gap-2">
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono font-bold ${
+                              vertAtypicalInfo.atypical ? 'bg-amber-500 text-black' : 'bg-slate-800 text-slate-400'
+                            }`}>
+                              {vertAtypicalInfo.atypical ? '⚠ ATYPICAL VERT' : '± OPTIONAL'}
+                            </span>
+                            <span className={vertAtypicalInfo.atypical ? 'text-amber-200 font-semibold' : 'text-slate-400'}>
+                              {vertAtypicalInfo.atypical
+                                ? `${group.side === 'right' ? 'Right' : 'Left'} vertebral flow is atypical (${vertAtypicalInfo.reason}). Click to assess subclavian artery for steal origin.`
+                                : 'Subclavian info collapsed (vertebral flow normal). Click to expand and document.'}
+                            </span>
+                          </div>
+                          <span className="text-[10px] font-bold text-cyan-400 hover:text-cyan-300 underline flex items-center gap-1">
+                            {vertAtypicalInfo.atypical ? 'Assess Subclavian Artery →' : '+ Expand'}
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+
+                  {/* CLINICAL PROMPT FOR ATYPICAL VERTEBRAL WHEN SUBCLAVIAN IS EXPANDED */}
+                  {isSubclavian && isSubclavianOpen && vertAtypicalInfo.atypical && (
+                    <tr className="bg-amber-950/40 border-b border-amber-500/40">
+                      <td colSpan={7} className="py-1.5 px-3">
+                        <div className="flex items-center gap-2 text-[11px] text-amber-200 font-medium">
+                          <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                          <span>
+                            <strong>Clinical Prompt:</strong> Atypical {group.side === 'right' ? 'Right' : 'Left'} vertebral artery flow ({vertAtypicalInfo.reason}). Assess proximal and distal subclavian artery for high-velocity jet or occlusion.
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+
+                  {/* VESSEL SEGMENTS IN THIS GROUP (RENDERED IF EXPANDED) */}
+                  {isSubclavianOpen && group.segmentIds.map((segId, segIdx) => {
                     const meta = SEGMENTS_META[segId];
                     const seg = studyData.segments[segId] || {
                       id: segId,
@@ -755,9 +920,17 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
                     const hasPlaque = seg.plaquePresent && plaqueSeverity !== 'none';
                     const isRetroFlow = seg.flowDirection === 'retrograde' || (seg.waveform && seg.waveform.toLowerCase().includes('retrograde'));
 
-                    // NASCET badge for specific lesion
+                    // NASCET badge for specific lesion site
+                    const sideNascet = group.side === 'right' ? studyData.nascet?.right : studyData.nascet?.left;
                     const nascetCalc = group.side === 'right' ? studyData.nascetRight : studyData.nascetLeft;
-                    const isNascetLesion = isIca && nascetCalc?.calculatedPercent !== null && nascetCalc?.calculatedPercent !== undefined && (seg.plaquePresent || isSevereStenosis || isModerateStenosis);
+                    const nascetVal = sideNascet?.longitudinal?.calculatedStenosis ?? sideNascet?.transverse?.calculatedStenosis ?? nascetCalc?.calculatedPercent ?? null;
+                    
+                    const sidePrefix = group.side === 'right' ? 'r_' : 'l_';
+                    const sideIcaPlaques = studyData.plaques.filter(p => p.segments.some(sId => sId.startsWith(sidePrefix)));
+                    const explicitMaxSite = sideIcaPlaques.find(p => p.maxPlaqueSite)?.maxPlaqueSite;
+                    const sidePeakIcaId = (group.side === 'right' ? rIcaPeak : lIcaPeak)?.segmentId || `${sidePrefix}ica_prox`;
+                    const isPrimaryIcaLesion = isIca && (explicitMaxSite ? segId === explicitMaxSite : segId === sidePeakIcaId);
+                    const isNascetLesion = isPrimaryIcaLesion && nascetVal !== null && (seg.plaquePresent || isSevereStenosis || isModerateStenosis || isHighPsv);
 
                     return (
                       <tr
@@ -781,10 +954,10 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
                               {meta?.shortName || meta?.name?.replace(/Right |Left /gi, '') || segId}
                             </span>
 
-                            {/* NASCET lesion indicator */}
-                            {isNascetLesion && segIdx === 0 && (
+                            {/* NASCET lesion indicator - Only at the primary stenosis lesion */}
+                            {isNascetLesion && (
                               <span className="text-[9px] px-1 py-0.2 bg-purple-500/20 text-purple-300 border border-purple-500/40 rounded font-mono font-bold">
-                                NASCET {Math.round(nascetCalc.calculatedPercent!)}%
+                                NASCET {Math.round(nascetVal!)}%
                               </span>
                             )}
 
@@ -1114,18 +1287,11 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-slate-200 flex items-center gap-1.5">
                       <Sliders className="w-3.5 h-3.5 text-purple-400" />
-                      NASCET Diameter Geometry
+                      NASCET Diameter Reduction Geometry
                     </span>
-                    <button
-                      onClick={() => {
-                        const side = drawerMeta.side === 'left' ? 'left' : 'right';
-                        onOpenNascet(side);
-                        setAdvancedDrawerSegmentId(null);
-                      }}
-                      className="text-[10px] text-purple-400 hover:text-purple-300 flex items-center gap-1"
-                    >
-                      Open Full Tool <ExternalLink className="w-3 h-3" />
-                    </button>
+                    <span className="text-[10px] text-slate-400 font-mono">
+                      Focal Stenosis Ratio
+                    </span>
                   </div>
 
                   <p className="text-[10px] text-slate-400 leading-relaxed">

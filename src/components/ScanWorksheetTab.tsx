@@ -7,14 +7,10 @@ import { DynamicProtocolBanner } from './DynamicProtocolBanner';
 import { TechnicalExceptionModal } from './TechnicalExceptionModal';
 import { CarotidWorksheetMap } from './CarotidWorksheetMap';
 import { SegmentAssessment } from './SegmentAssessment';
-import { PlaqueRegister } from './PlaqueRegister';
-import { NascetCalculator } from './NascetCalculator';
 import { AssociatedPathologyTab } from './AssociatedPathologyTab';
 import { CriteriaReferenceTab } from './CriteriaReferenceTab';
 import { 
-  Layers, 
   ClipboardList, 
-  Ruler, 
   ShieldAlert, 
   BookOpen, 
   ChevronDown, 
@@ -71,8 +67,6 @@ export const ScanWorksheetTab: React.FC<ScanWorksheetTabProps> = ({
   onNavigateTab,
 }) => {
   // Collapsible Secondary Tools state
-  const [isPlaqueExpanded, setIsPlaqueExpanded] = useState<boolean>(studyData.plaques.length > 0);
-  const [isNascetExpanded, setIsNascetExpanded] = useState<boolean>(false);
   const [isAssociatedExpanded, setIsAssociatedExpanded] = useState<boolean>(studyData.nonCarotidFindings.length > 0);
   const [isCriteriaExpanded, setIsCriteriaExpanded] = useState<boolean>(false);
 
@@ -166,22 +160,6 @@ export const ScanWorksheetTab: React.FC<ScanWorksheetTabProps> = ({
       protocolAuditLog: newAuditLog,
       segments: updatedSegments
     });
-  };
-
-  const nascetRightSummary = studyData.nascet.right.longitudinal.calculatedStenosis !== null 
-    ? `${studyData.nascet.right.longitudinal.calculatedStenosis}% (Long)` 
-    : studyData.nascet.right.transverse.calculatedStenosis !== null 
-    ? `${studyData.nascet.right.transverse.calculatedStenosis}% (Trans)` 
-    : null;
-
-  const nascetLeftSummary = studyData.nascet.left.longitudinal.calculatedStenosis !== null 
-    ? `${studyData.nascet.left.longitudinal.calculatedStenosis}% (Long)` 
-    : studyData.nascet.left.transverse.calculatedStenosis !== null 
-    ? `${studyData.nascet.left.transverse.calculatedStenosis}% (Trans)` 
-    : null;
-
-  const handleAddPlaqueFromSegments = (ids: string[]) => {
-    setIsPlaqueExpanded(true);
   };
 
   return (
@@ -285,16 +263,8 @@ export const ScanWorksheetTab: React.FC<ScanWorksheetTabProps> = ({
               onRemoveSelectedSegment={onRemoveSelectedSegment}
               onUpdateSegment={onUpdateSegment}
               onUpdateSegmentsBulk={onUpdateSegmentsBulk}
-              onAddPlaqueFromSegments={handleAddPlaqueFromSegments}
               onAddPlaque={onAddPlaque}
               onUpdateStudy={onUpdateStudy}
-              onOpenNascet={(side) => {
-                setIsNascetExpanded(true);
-                const el = document.getElementById('nascet-calculator-container');
-                if (el) {
-                  el.scrollIntoView({ behavior: 'smooth' });
-                }
-              }}
             />
           </aside>
         </div>
@@ -305,88 +275,12 @@ export const ScanWorksheetTab: React.FC<ScanWorksheetTabProps> = ({
         <div className="flex items-center justify-between">
           <h3 className="text-xs font-black text-slate-300 uppercase tracking-wider flex items-center gap-2">
             <ClipboardList className="w-4 h-4 text-cyan-400" />
-            Specialized Pathology Modules & Reference Tools
+            Specialized Reference & Associated Findings
           </h3>
           <span className="text-[10px] text-slate-400">Expand as needed during examination</span>
         </div>
 
-        {/* Accordion 1: Plaque Assessment Register */}
-        <div className="bg-[#0b1329] border border-slate-800 rounded-xl overflow-hidden shadow-md">
-          <div
-            onClick={() => setIsPlaqueExpanded(!isPlaqueExpanded)}
-            className="p-3.5 bg-[#0d162f] flex items-center justify-between cursor-pointer hover:bg-[#101c3d] transition-all"
-          >
-            <div className="flex items-center gap-2.5">
-              <ClipboardList className="w-4 h-4 text-cyan-400" />
-              <div>
-                <span className="text-xs font-extrabold text-slate-100 uppercase tracking-wider">
-                  Plaque Assessment & Characterisation Register
-                </span>
-                <span className="ml-2 text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono">
-                  {studyData.plaques.length} Plaque{studyData.plaques.length !== 1 ? 's' : ''} Documented
-                </span>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] font-bold text-cyan-400">
-                {isPlaqueExpanded ? 'Collapse' : 'Expand Plaque Register'}
-              </span>
-              {isPlaqueExpanded ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
-            </div>
-          </div>
-
-          {isPlaqueExpanded && (
-            <div className="p-4 sm:p-5 bg-[#090f20] border-t border-slate-800 animate-in fade-in duration-200">
-              <PlaqueRegister
-                studyData={studyData}
-                selectedSegmentIds={selectedSegmentIds}
-                onAddPlaque={onAddPlaque}
-                onRemovePlaque={onRemovePlaque}
-              />
-            </div>
-          )}
-        </div>
-
-        {/* Accordion 2: NASCET Diameter Calculator */}
-        <div className="bg-[#0b1329] border border-slate-800 rounded-xl overflow-hidden shadow-md">
-          <div
-            onClick={() => setIsNascetExpanded(!isNascetExpanded)}
-            className="p-3.5 bg-[#0d162f] flex items-center justify-between cursor-pointer hover:bg-[#101c3d] transition-all"
-          >
-            <div className="flex items-center gap-2.5">
-              <Ruler className="w-4 h-4 text-cyan-400" />
-              <div>
-                <span className="text-xs font-extrabold text-slate-100 uppercase tracking-wider">
-                  NASCET Diameter Reduction Calculator
-                </span>
-                <span className="ml-2 text-[10px] text-slate-400 font-mono">
-                  {nascetRightSummary || nascetLeftSummary
-                    ? `Right: ${nascetRightSummary || '—'} • Left: ${nascetLeftSummary || '—'}`
-                    : 'Optional Anatomical Diameter Ratio (% Stenosis = [1 - A/B] × 100)'}
-                </span>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] font-bold text-cyan-400">
-                {isNascetExpanded ? 'Collapse' : 'Expand Calculator'}
-              </span>
-              {isNascetExpanded ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
-            </div>
-          </div>
-
-          {isNascetExpanded && (
-            <div className="p-4 sm:p-5 bg-[#090f20] border-t border-slate-800 animate-in fade-in duration-200">
-              <NascetCalculator
-                studyData={studyData}
-                onUpdateNascet={onUpdateNascet}
-              />
-            </div>
-          )}
-        </div>
-
-        {/* Accordion 3: Associated / Non-Carotid Findings */}
+        {/* Accordion: Associated / Non-Carotid Findings */}
         <div className="bg-[#0b1329] border border-slate-800 rounded-xl overflow-hidden shadow-md">
           <div
             onClick={() => setIsAssociatedExpanded(!isAssociatedExpanded)}
