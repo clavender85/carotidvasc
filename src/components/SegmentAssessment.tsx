@@ -171,11 +171,11 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
 
     sides.forEach(side => {
       const prefix = side === 'right' ? 'r_' : 'l_';
-      const sideLabel = side === 'right' ? 'Right' : 'Left';
+      const sideShort = side === 'right' ? 'Rt' : 'Lt';
 
       // 1. Common Carotid (CCA)
       groups.push({
-        name: `${sideLabel} Common Carotid (CCA)`,
+        name: `${sideShort} CCA`,
         vesselKey: 'cca',
         side,
         segmentIds: [`${prefix}cca_prox`, `${prefix}cca_mid`, `${prefix}cca_dist`]
@@ -183,7 +183,7 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
 
       // 2. Carotid Bulb
       groups.push({
-        name: `${sideLabel} Carotid Bulb`,
+        name: `${sideShort} Bulb`,
         vesselKey: 'bulb',
         side,
         segmentIds: [`${prefix}bulb`]
@@ -191,7 +191,7 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
 
       // 3. Internal Carotid (ICA)
       groups.push({
-        name: `${sideLabel} Internal Carotid (ICA)`,
+        name: `${sideShort} ICA`,
         vesselKey: 'ica',
         side,
         segmentIds: [`${prefix}ica_prox`, `${prefix}ica_mid`, `${prefix}ica_dist`]
@@ -199,7 +199,7 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
 
       // 4. External Carotid (ECA)
       groups.push({
-        name: `${sideLabel} External Carotid (ECA)`,
+        name: `${sideShort} ECA`,
         vesselKey: 'eca',
         side,
         segmentIds: [`${prefix}eca_prox`, `${prefix}eca_dist`]
@@ -207,7 +207,7 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
 
       // 5. Vertebral Artery
       groups.push({
-        name: `${sideLabel} Vertebral Artery`,
+        name: `${sideShort} Vert`,
         vesselKey: 'vertebral',
         side,
         segmentIds: [`${prefix}vert_prox`, `${prefix}vert_mid`, `${prefix}vert_dist`]
@@ -215,7 +215,7 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
 
       // 6. Subclavian Artery (±)
       groups.push({
-        name: `${sideLabel} Subclavian Artery (±)`,
+        name: `${sideShort} Subclavian (±)`,
         vesselKey: 'subclavian',
         side,
         segmentIds: [`${prefix}subcl_prox`, `${prefix}subcl_dist`]
@@ -418,16 +418,31 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
     ];
   };
 
-  // Helper to determine plaque label for segment
-  const getSegmentPlaqueSeverity = (segId: string): 'none' | 'mild' | 'moderate' | 'severe' => {
+  // Helper to determine plaque composition for segment
+  const getSegmentPlaqueComposition = (segId: string): 'none' | 'echogenic' | 'hypoechoic' | 'calcified' | 'mixed' => {
     const seg = studyData.segments[segId];
     if (!seg || !seg.plaquePresent) return 'none';
     const plaque = studyData.plaques.find(p => p.segments.includes(segId));
-    if (!plaque) return 'mild';
-    const narrow = plaque.luminalNarrowingVisible?.toLowerCase() || '';
-    if (narrow.includes('severe') || narrow.includes('70') || (plaque.maxThicknessMm && plaque.maxThicknessMm >= 2.5)) return 'severe';
-    if (narrow.includes('moderate') || narrow.includes('50') || (plaque.maxThicknessMm && plaque.maxThicknessMm >= 1.5)) return 'moderate';
-    return 'mild';
+    if (!plaque || !plaque.composition) return 'echogenic';
+    const comp = plaque.composition.toLowerCase();
+    if (comp.includes('calcified') || comp.includes('dense') || comp.includes('calc')) return 'calcified';
+    if (comp.includes('hypoechoic') || comp.includes('soft') || comp.includes('lipid') || comp.includes('intraplaque')) return 'hypoechoic';
+    if (comp.includes('mixed') || comp.includes('heterogeneous') || comp.includes('complex')) return 'mixed';
+    if (comp.includes('echogenic') || comp.includes('fibrous') || comp.includes('homogeneous')) return 'echogenic';
+    return 'echogenic';
+  };
+
+  // Helper to determine plaque surface for segment
+  const getSegmentPlaqueSurface = (segId: string): 'none' | 'smooth' | 'irregular' | 'ulcerated' => {
+    const seg = studyData.segments[segId];
+    if (!seg || !seg.plaquePresent) return 'none';
+    const plaque = studyData.plaques.find(p => p.segments.includes(segId));
+    if (!plaque || !plaque.surface) return 'smooth';
+    const surf = plaque.surface.toLowerCase();
+    if (surf.includes('ulcer')) return 'ulcerated';
+    if (surf.includes('irreg')) return 'irregular';
+    if (surf.includes('smooth')) return 'smooth';
+    return 'smooth';
   };
 
   // Helper to determine stenosis label for segment
@@ -485,27 +500,29 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
     onUpdateSegment(id, updates);
   };
 
-  // Handle Plaque change
-  const handlePlaqueChange = (id: string, plaqueVal: string) => {
+  // Handle Plaque Composition change
+  const handlePlaqueCompositionChange = (id: string, compVal: string) => {
     const meta = SEGMENTS_META[id];
-    const side = meta?.side === 'left' ? 'left' : 'right';
     
-    if (plaqueVal === 'none' || plaqueVal === 'None') {
+    if (compVal === 'none' || compVal === 'None') {
       onUpdateSegment(id, {
         plaquePresent: false
       });
-      // Remove from plaques list if single segment
-      const existingPlaques = studyData.plaques.filter(p => !p.segments.includes(id));
+      // Remove or detach plaque
+      const existingPlaques = studyData.plaques
+        .map(p => ({
+          ...p,
+          segments: p.segments.filter(sId => sId !== id)
+        }))
+        .filter(p => p.segments.length > 0);
+
       if (onUpdateStudy) {
         onUpdateStudy({ plaques: existingPlaques });
       }
     } else {
-      const severity = plaqueVal.toLowerCase() as 'mild' | 'moderate' | 'severe';
       const existingPlaque = studyData.plaques.find(p => p.segments.includes(id));
+      const isCalcified = compVal === 'calcified';
       
-      const thickness = severity === 'severe' ? 3.0 : severity === 'moderate' ? 2.0 : 1.2;
-      const narrowing = severity === 'severe' ? 'Severe luminal encroachment (≥70%)' : severity === 'moderate' ? 'Moderate luminal narrowing (50–69%)' : 'Mild wall thickening (<50%)';
-
       if (!existingPlaque) {
         const newPlaqueId = `plaque_${id}_${Date.now()}`;
         const newPlaque: PlaqueData = {
@@ -513,12 +530,12 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
           segments: [id],
           locationDescription: meta?.name || id,
           maxPlaqueSite: id,
-          maxThicknessMm: thickness,
-          composition: 'homogeneous_fibrous',
+          maxThicknessMm: isCalcified ? 2.4 : 1.8,
+          composition: compVal,
           surface: 'smooth',
-          calcificShadowing: 'none',
-          luminalNarrowingVisible: narrowing,
-          freeTextDescription: `${severity.toUpperCase()} atheroma at ${meta?.name || id}`
+          calcificShadowing: isCalcified ? 'partial' : 'none',
+          luminalNarrowingVisible: 'Mild wall thickening (<50%)',
+          freeTextDescription: `${compVal.toUpperCase()} plaque at ${meta?.name || id}`
         };
         if (onAddPlaque) {
           onAddPlaque(newPlaque);
@@ -528,8 +545,8 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
       } else {
         const updated = studyData.plaques.map(p => p.id === existingPlaque.id ? { 
           ...p, 
-          maxThicknessMm: thickness,
-          luminalNarrowingVisible: narrowing 
+          composition: compVal,
+          calcificShadowing: isCalcified ? (p.calcificShadowing === 'none' ? 'partial' : p.calcificShadowing) : p.calcificShadowing
         } : p);
         if (onUpdateStudy) {
           onUpdateStudy({ plaques: updated });
@@ -540,6 +557,56 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
         plaquePresent: true
       });
     }
+  };
+
+  // Handle Plaque Surface change
+  const handlePlaqueSurfaceChange = (id: string, surfVal: string) => {
+    const meta = SEGMENTS_META[id];
+    
+    if (surfVal === 'none' || surfVal === '—') {
+      const existingPlaque = studyData.plaques.find(p => p.segments.includes(id));
+      if (existingPlaque && onUpdateStudy) {
+        const updated = studyData.plaques.map(p => p.id === existingPlaque.id ? { ...p, surface: 'smooth' as PlaqueSurface } : p);
+        onUpdateStudy({ plaques: updated });
+      }
+      return;
+    }
+
+    const surfaceTyped = surfVal as PlaqueSurface;
+    const existingPlaque = studyData.plaques.find(p => p.segments.includes(id));
+
+    if (!existingPlaque) {
+      const newPlaqueId = `plaque_${id}_${Date.now()}`;
+      const newPlaque: PlaqueData = {
+        id: newPlaqueId,
+        segments: [id],
+        locationDescription: meta?.name || id,
+        maxPlaqueSite: id,
+        maxThicknessMm: 1.8,
+        composition: 'echogenic',
+        surface: surfaceTyped,
+        calcificShadowing: 'none',
+        luminalNarrowingVisible: 'Mild wall thickening (<50%)',
+        freeTextDescription: `${surfaceTyped.toUpperCase()} surface plaque at ${meta?.name || id}`
+      };
+      if (onAddPlaque) {
+        onAddPlaque(newPlaque);
+      } else if (onUpdateStudy) {
+        onUpdateStudy({ plaques: [...studyData.plaques, newPlaque] });
+      }
+    } else {
+      const updated = studyData.plaques.map(p => p.id === existingPlaque.id ? { 
+        ...p, 
+        surface: surfaceTyped 
+      } : p);
+      if (onUpdateStudy) {
+        onUpdateStudy({ plaques: updated });
+      }
+    }
+
+    onUpdateSegment(id, {
+      plaquePresent: true
+    });
   };
 
   // Handle Stenosis change
@@ -760,13 +827,14 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
           {/* Sticky Table Header */}
           <thead className="sticky top-0 z-20 bg-[#0f172a] shadow-sm border-b border-slate-700/80 text-[11px] font-bold text-slate-300 uppercase tracking-wider">
             <tr>
-              <th className="py-2 px-3 w-[26%]">Vessel / Segment</th>
-              <th className="py-2 px-2 w-[12%] text-center">PSV <span className="text-[9px] text-slate-400 font-normal lowercase">cm/s</span></th>
-              <th className="py-2 px-2 w-[12%] text-center">EDV <span className="text-[9px] text-slate-400 font-normal lowercase">cm/s</span></th>
-              <th className="py-2 px-2 w-[22%]">Waveform</th>
-              <th className="py-2 px-2 w-[13%]">Plaque</th>
-              <th className="py-2 px-2 w-[11%]">Stenosis</th>
-              <th className="py-2 px-1 w-[4%] text-center"></th>
+              <th className="py-2 px-3 w-[18%]">Vessel / Segment</th>
+              <th className="py-2 px-1.5 w-[10%] text-center">PSV <span className="text-[9px] text-slate-400 font-normal lowercase">cm/s</span></th>
+              <th className="py-2 px-1.5 w-[10%] text-center">EDV <span className="text-[9px] text-slate-400 font-normal lowercase">cm/s</span></th>
+              <th className="py-2 px-1.5 w-[18%]">Waveform</th>
+              <th className="py-2 px-1.5 w-[15%]">Plaque</th>
+              <th className="py-2 px-1.5 w-[12%]">Surface</th>
+              <th className="py-2 px-1.5 w-[14%]">Stenosis</th>
+              <th className="py-2 px-1 w-[3%] text-center"></th>
             </tr>
           </thead>
 
@@ -784,7 +852,7 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
                 <React.Fragment key={`${group.side}_${group.vesselKey}`}>
                   {/* GROUP HEADER ROW WITH HIGH-YIELD SUMMARY */}
                   <tr className="bg-[#121c38]/90 border-t border-slate-700/60">
-                    <td colSpan={7} className="py-1.5 px-3">
+                    <td colSpan={8} className="py-1.5 px-3">
                       <div className="flex items-center justify-between text-[11px] font-bold">
                         <span className="text-cyan-300 uppercase tracking-wider flex items-center gap-1.5">
                           <span className={`w-1.5 h-1.5 rounded-full ${isAbnormalGroup ? 'bg-amber-400 animate-pulse' : 'bg-cyan-400'}`} />
@@ -849,7 +917,7 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
                           : 'bg-[#090f20]/60 hover:bg-[#0d162f]'
                       }`}
                     >
-                      <td colSpan={7} className="py-2 px-3">
+                      <td colSpan={8} className="py-2 px-3">
                         <div className="flex items-center justify-between text-[11px]">
                           <div className="flex items-center gap-2">
                             <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono font-bold ${
@@ -874,7 +942,7 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
                   {/* CLINICAL PROMPT FOR ATYPICAL VERTEBRAL WHEN SUBCLAVIAN IS EXPANDED */}
                   {isSubclavian && isSubclavianOpen && vertAtypicalInfo.atypical && (
                     <tr className="bg-amber-950/40 border-b border-amber-500/40">
-                      <td colSpan={7} className="py-1.5 px-3">
+                      <td colSpan={8} className="py-1.5 px-3">
                         <div className="flex items-center gap-2 text-[11px] text-amber-200 font-medium">
                           <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                           <span>
@@ -909,7 +977,8 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
                     const waveformOptions = getWaveformOptionsForSegment(segId);
                     const stenosisOptions = getStenosisOptionsForSegment(segId);
 
-                    const plaqueSeverity = getSegmentPlaqueSeverity(segId);
+                    const plaqueComp = getSegmentPlaqueComposition(segId);
+                    const plaqueSurface = getSegmentPlaqueSurface(segId);
                     const stenosisGrade = getSegmentStenosisGrade(segId);
 
                     // High-yield highlighting
@@ -917,7 +986,7 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
                     const isVeryHighPsv = seg.psv !== null && seg.psv >= 230;
                     const isSevereStenosis = stenosisGrade === '>=70%' || stenosisGrade === 'near_occlusion' || stenosisGrade === 'occluded';
                     const isModerateStenosis = stenosisGrade === '50-69%';
-                    const hasPlaque = seg.plaquePresent && plaqueSeverity !== 'none';
+                    const hasPlaque = seg.plaquePresent && plaqueComp !== 'none';
                     const isRetroFlow = seg.flowDirection === 'retrograde' || (seg.waveform && seg.waveform.toLowerCase().includes('retrograde'));
 
                     // NASCET badge for specific lesion site
@@ -1044,30 +1113,56 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
                           </select>
                         </td>
 
-                        {/* 5. Plaque (Inline Dropdown: None / Mild / Moderate / Severe) */}
+                        {/* 5. Plaque Type (Inline Dropdown: None / Echogenic / Hypoechoic / Calcified / Mixed) */}
                         <td className="py-1 px-1.5" onClick={(e) => e.stopPropagation()}>
                           <select
                             id={`select-plaque-${segId}`}
-                            value={hasPlaque ? plaqueSeverity : 'none'}
-                            onChange={(e) => handlePlaqueChange(segId, e.target.value)}
-                            className={`w-full py-1 px-1.5 text-[11px] rounded border transition-colors outline-none focus:ring-1 focus:ring-cyan-400 font-medium capitalize ${
-                              plaqueSeverity === 'severe'
-                                ? 'bg-red-950/50 border-red-500/50 text-red-300 font-bold'
-                                : plaqueSeverity === 'moderate'
-                                ? 'bg-amber-950/40 border-amber-500/40 text-amber-300 font-semibold'
-                                : plaqueSeverity === 'mild'
+                            value={hasPlaque ? plaqueComp : 'none'}
+                            onChange={(e) => handlePlaqueCompositionChange(segId, e.target.value)}
+                            className={`w-full py-1 px-1 text-[11px] rounded border transition-colors outline-none focus:ring-1 focus:ring-cyan-400 font-medium capitalize ${
+                              plaqueComp === 'calcified'
+                                ? 'bg-teal-950/50 border-teal-500/50 text-teal-300 font-semibold'
+                                : plaqueComp === 'hypoechoic'
+                                ? 'bg-amber-950/50 border-amber-500/50 text-amber-300 font-semibold'
+                                : plaqueComp === 'mixed'
+                                ? 'bg-purple-950/50 border-purple-500/50 text-purple-300 font-semibold'
+                                : plaqueComp === 'echogenic'
                                 ? 'bg-blue-950/40 border-blue-500/40 text-blue-300'
                                 : 'bg-[#070d1e] border-slate-800 text-slate-400 hover:border-slate-700'
                             }`}
                           >
                             <option value="none" className="bg-[#0f172a] text-slate-400">None</option>
-                            <option value="mild" className="bg-[#0f172a] text-blue-300 font-semibold">Mild</option>
-                            <option value="moderate" className="bg-[#0f172a] text-amber-300 font-semibold">Moderate</option>
-                            <option value="severe" className="bg-[#0f172a] text-red-300 font-bold">Severe</option>
+                            <option value="echogenic" className="bg-[#0f172a] text-blue-300 font-semibold">Echogenic</option>
+                            <option value="hypoechoic" className="bg-[#0f172a] text-amber-300 font-semibold">Hypoechoic</option>
+                            <option value="calcified" className="bg-[#0f172a] text-teal-300 font-semibold">Calcified</option>
+                            <option value="mixed" className="bg-[#0f172a] text-purple-300 font-semibold">Mixed</option>
                           </select>
                         </td>
 
-                        {/* 6. Stenosis (Inline Dropdown) */}
+                        {/* 6. Plaque Surface (Inline Dropdown: — / Smooth / Irregular / Ulcerated) */}
+                        <td className="py-1 px-1.5" onClick={(e) => e.stopPropagation()}>
+                          <select
+                            id={`select-surface-${segId}`}
+                            value={hasPlaque ? plaqueSurface : 'none'}
+                            onChange={(e) => handlePlaqueSurfaceChange(segId, e.target.value)}
+                            className={`w-full py-1 px-1 text-[11px] rounded border transition-colors outline-none focus:ring-1 focus:ring-cyan-400 font-medium capitalize ${
+                              plaqueSurface === 'ulcerated'
+                                ? 'bg-red-950/60 border-red-500/60 text-red-300 font-bold'
+                                : plaqueSurface === 'irregular'
+                                ? 'bg-amber-950/50 border-amber-500/50 text-amber-300 font-semibold'
+                                : plaqueSurface === 'smooth' && hasPlaque
+                                ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-300 font-medium'
+                                : 'bg-[#070d1e] border-slate-800 text-slate-500 hover:border-slate-700'
+                            }`}
+                          >
+                            <option value="none" className="bg-[#0f172a] text-slate-500">—</option>
+                            <option value="smooth" className="bg-[#0f172a] text-emerald-300 font-medium">Smooth</option>
+                            <option value="irregular" className="bg-[#0f172a] text-amber-300 font-semibold">Irregular</option>
+                            <option value="ulcerated" className="bg-[#0f172a] text-red-300 font-bold">Ulcerated</option>
+                          </select>
+                        </td>
+
+                        {/* 7. Stenosis (Inline Dropdown) */}
                         <td className="py-1 px-1.5" onClick={(e) => e.stopPropagation()}>
                           <select
                             id={`select-stenosis-${segId}`}
@@ -1091,7 +1186,7 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
                           </select>
                         </td>
 
-                        {/* 7. Action Button (⋯) for Advanced Details */}
+                        {/* 8. Action Button (⋯) for Advanced Details */}
                         <td className="py-1 px-1 text-center" onClick={(e) => e.stopPropagation()}>
                           <button
                             id={`btn-advanced-${segId}`}
@@ -1205,7 +1300,7 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
                   <div>
                     <label className="text-[10px] text-slate-400 block mb-1">Composition</label>
                     <select
-                      value={drawerPlaque?.composition || 'homogeneous_fibrous'}
+                      value={drawerPlaque?.composition || 'echogenic'}
                       onChange={(e) => {
                         if (drawerPlaque && onUpdateStudy) {
                           const updated = studyData.plaques.map(p => p.id === drawerPlaque.id ? { ...p, composition: e.target.value as PlaqueComposition } : p);
@@ -1214,11 +1309,10 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
                       }}
                       className="w-full py-1 px-2 text-xs bg-[#070d1e] border border-slate-700 rounded text-slate-200 outline-none"
                     >
-                      <option value="homogeneous_fibrous">Homogeneous / Fibrous</option>
-                      <option value="heterogeneous">Heterogeneous (Mixed)</option>
+                      <option value="echogenic">Echogenic (Fibrous)</option>
+                      <option value="hypoechoic">Hypoechoic (Soft / Lipid)</option>
                       <option value="calcified">Calcified</option>
-                      <option value="lipid_rich">Lipid-Rich Necrotic Core</option>
-                      <option value="intraplaque_hemorrhage">Intraplaque Hemorrhage</option>
+                      <option value="mixed">Mixed (Heterogeneous)</option>
                     </select>
                   </div>
 
