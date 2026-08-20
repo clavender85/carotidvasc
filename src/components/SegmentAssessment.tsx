@@ -105,6 +105,9 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
   // Manual expand/collapse state for optional Subclavian Artery (keyed by side)
   const [subclavianManualToggle, setSubclavianManualToggle] = useState<Record<string, boolean>>({});
 
+  // Vessel ordering mode: 'anatomical' (ICA -> ECA -> Bulb -> CCA -> Vert -> Subclavian, matching diagram top-to-bottom) vs 'scan' (CCA -> Bulb -> ICA -> ECA -> Vert -> Subclavian)
+  const [vesselOrderMode, setVesselOrderMode] = useState<'anatomical' | 'scan'>('anatomical');
+
   // Helper to detect if a vertebral artery has atypical / steal waveforms or abnormal flow
   const isVertAtypical = (side: 'right' | 'left'): { atypical: boolean; reason?: string } => {
     const prefix = side === 'right' ? 'r_' : 'l_';
@@ -164,7 +167,7 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
     return isVertAtypical(side).atypical || hasSubclavianData(side);
   };
 
-  // Define vessel groups in strict clinical sequence: CCA -> Bulb -> ICA -> ECA -> Vertebral -> Subclavian (±)
+  // Define vessel groups aligned with anatomical map (ICA -> ECA -> Bulb -> CCA -> Vert -> Subclavian) or scan order
   const vesselGroups: VesselGroup[] = useMemo(() => {
     const sides: ('right' | 'left')[] = activeSideTab === 'bilateral' ? ['right', 'left'] : [activeSideTab];
     const groups: VesselGroup[] = [];
@@ -173,57 +176,102 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
       const prefix = side === 'right' ? 'r_' : 'l_';
       const sideShort = side === 'right' ? 'Rt' : 'Lt';
 
-      // 1. Common Carotid (CCA)
-      groups.push({
-        name: `${sideShort} CCA`,
-        vesselKey: 'cca',
-        side,
-        segmentIds: [`${prefix}cca_prox`, `${prefix}cca_mid`, `${prefix}cca_dist`]
-      });
+      if (vesselOrderMode === 'anatomical') {
+        // 1. Internal Carotid (ICA) - Top cranial level of diagram
+        groups.push({
+          name: `${sideShort} ICA`,
+          vesselKey: 'ica',
+          side,
+          segmentIds: [`${prefix}ica_prox`, `${prefix}ica_mid`, `${prefix}ica_dist`]
+        });
 
-      // 2. Carotid Bulb
-      groups.push({
-        name: `${sideShort} Bulb`,
-        vesselKey: 'bulb',
-        side,
-        segmentIds: [`${prefix}bulb`]
-      });
+        // 2. External Carotid (ECA) - Top cranial level of diagram
+        groups.push({
+          name: `${sideShort} ECA`,
+          vesselKey: 'eca',
+          side,
+          segmentIds: [`${prefix}eca_prox`, `${prefix}eca_dist`]
+        });
 
-      // 3. Internal Carotid (ICA)
-      groups.push({
-        name: `${sideShort} ICA`,
-        vesselKey: 'ica',
-        side,
-        segmentIds: [`${prefix}ica_prox`, `${prefix}ica_mid`, `${prefix}ica_dist`]
-      });
+        // 3. Carotid Bulb - Mid-upper bifurcation level of diagram
+        groups.push({
+          name: `${sideShort} Bulb`,
+          vesselKey: 'bulb',
+          side,
+          segmentIds: [`${prefix}bulb`]
+        });
 
-      // 4. External Carotid (ECA)
-      groups.push({
-        name: `${sideShort} ECA`,
-        vesselKey: 'eca',
-        side,
-        segmentIds: [`${prefix}eca_prox`, `${prefix}eca_dist`]
-      });
+        // 4. Common Carotid (CCA) - Mid-lower neck level of diagram
+        groups.push({
+          name: `${sideShort} CCA`,
+          vesselKey: 'cca',
+          side,
+          segmentIds: [`${prefix}cca_prox`, `${prefix}cca_mid`, `${prefix}cca_dist`]
+        });
 
-      // 5. Vertebral Artery
-      groups.push({
-        name: `${sideShort} Vert`,
-        vesselKey: 'vertebral',
-        side,
-        segmentIds: [`${prefix}vert_prox`, `${prefix}vert_mid`, `${prefix}vert_dist`]
-      });
+        // 5. Vertebral Artery - Parallel longitudinal track
+        groups.push({
+          name: `${sideShort} Vert`,
+          vesselKey: 'vertebral',
+          side,
+          segmentIds: [`${prefix}vert_prox`, `${prefix}vert_mid`, `${prefix}vert_dist`]
+        });
 
-      // 6. Subclavian Artery (±)
-      groups.push({
-        name: `${sideShort} Subclavian (±)`,
-        vesselKey: 'subclavian',
-        side,
-        segmentIds: [`${prefix}subcl_prox`, `${prefix}subcl_dist`]
-      });
+        // 6. Subclavian Artery (±) - Base level of diagram
+        groups.push({
+          name: `${sideShort} Subclavian (±)`,
+          vesselKey: 'subclavian',
+          side,
+          segmentIds: [`${prefix}subcl_prox`, `${prefix}subcl_dist`]
+        });
+      } else {
+        // Ascending Scan Order: CCA -> Bulb -> ICA -> ECA -> Vert -> Subclavian
+        groups.push({
+          name: `${sideShort} CCA`,
+          vesselKey: 'cca',
+          side,
+          segmentIds: [`${prefix}cca_prox`, `${prefix}cca_mid`, `${prefix}cca_dist`]
+        });
+
+        groups.push({
+          name: `${sideShort} Bulb`,
+          vesselKey: 'bulb',
+          side,
+          segmentIds: [`${prefix}bulb`]
+        });
+
+        groups.push({
+          name: `${sideShort} ICA`,
+          vesselKey: 'ica',
+          side,
+          segmentIds: [`${prefix}ica_prox`, `${prefix}ica_mid`, `${prefix}ica_dist`]
+        });
+
+        groups.push({
+          name: `${sideShort} ECA`,
+          vesselKey: 'eca',
+          side,
+          segmentIds: [`${prefix}eca_prox`, `${prefix}eca_dist`]
+        });
+
+        groups.push({
+          name: `${sideShort} Vert`,
+          vesselKey: 'vertebral',
+          side,
+          segmentIds: [`${prefix}vert_prox`, `${prefix}vert_mid`, `${prefix}vert_dist`]
+        });
+
+        groups.push({
+          name: `${sideShort} Subclavian (±)`,
+          vesselKey: 'subclavian',
+          side,
+          segmentIds: [`${prefix}subcl_prox`, `${prefix}subcl_dist`]
+        });
+      }
     });
 
     return groups;
-  }, [activeSideTab]);
+  }, [activeSideTab, vesselOrderMode]);
 
   // Hemodynamic calculations per side
   const rIcaPeak = useMemo(() => getPeakIcaMeasurements('right', studyData), [studyData]);
@@ -894,40 +942,56 @@ export const SegmentAssessment: React.FC<SegmentAssessmentProps> = ({
         </div>
 
         {/* Tab Selection: RIGHT | LEFT | BILATERAL */}
-        <div className="flex items-center bg-[#070d1e] p-0.5 rounded-lg border border-slate-800">
+        <div className="flex items-center gap-2">
+          {/* Order Toggle: Anatomical Map Alignment vs Ascending Scan Protocol */}
           <button
-            id="tab-btn-right"
-            onClick={() => setActiveSideTab('right')}
-            className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${
-              activeSideTab === 'right'
-                ? 'bg-cyan-600 text-white shadow-sm'
-                : 'text-slate-400 hover:text-slate-200'
+            id="btn-toggle-vessel-order"
+            onClick={() => setVesselOrderMode(prev => prev === 'anatomical' ? 'scan' : 'anatomical')}
+            title={vesselOrderMode === 'anatomical' ? 'Aligned with Anatomical Map (ICA → ECA → Bulb → CCA → Vert → Subclavian). Click to switch to Ascending Scan order.' : 'Ascending Scan Order (CCA → Bulb → ICA → ECA → Vert → Subclavian). Click to switch to Anatomical Map alignment.'}
+            className={`hidden md:flex items-center gap-1 px-2 py-1 rounded text-[10.5px] font-bold border transition-all ${
+              vesselOrderMode === 'anatomical'
+                ? 'bg-cyan-950/70 border-cyan-500/50 text-cyan-300 shadow-xs'
+                : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-slate-200'
             }`}
           >
-            RIGHT
+            <span>{vesselOrderMode === 'anatomical' ? 'Map Order (ICA→CCA)' : 'Scan Order (CCA→ICA)'}</span>
           </button>
-          <button
-            id="tab-btn-left"
-            onClick={() => setActiveSideTab('left')}
-            className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${
-              activeSideTab === 'left'
-                ? 'bg-cyan-600 text-white shadow-sm'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            LEFT
-          </button>
-          <button
-            id="tab-btn-bilateral"
-            onClick={() => setActiveSideTab('bilateral')}
-            className={`px-2.5 py-1 text-xs font-bold rounded-md transition-all ${
-              activeSideTab === 'bilateral'
-                ? 'bg-cyan-600 text-white shadow-sm'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            BILATERAL
-          </button>
+
+          <div className="flex items-center bg-[#070d1e] p-0.5 rounded-lg border border-slate-800">
+            <button
+              id="tab-btn-right"
+              onClick={() => setActiveSideTab('right')}
+              className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${
+                activeSideTab === 'right'
+                  ? 'bg-cyan-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              RIGHT
+            </button>
+            <button
+              id="tab-btn-left"
+              onClick={() => setActiveSideTab('left')}
+              className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${
+                activeSideTab === 'left'
+                  ? 'bg-cyan-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              LEFT
+            </button>
+            <button
+              id="tab-btn-bilateral"
+              onClick={() => setActiveSideTab('bilateral')}
+              className={`px-2.5 py-1 text-xs font-bold rounded-md transition-all ${
+                activeSideTab === 'bilateral'
+                  ? 'bg-cyan-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              BILATERAL
+            </button>
+          </div>
         </div>
 
         {/* Quick Normal Action */}

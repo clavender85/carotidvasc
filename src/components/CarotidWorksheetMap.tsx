@@ -512,7 +512,7 @@ export const CarotidWorksheetMap: React.FC<CarotidWorksheetMapProps> = ({
   };
 
   return (
-    <div id="carotid-worksheet-map" className="flex flex-col bg-[#0b1329] rounded-xl border border-slate-800 overflow-hidden relative min-h-[720px] shadow-lg">
+    <div id="carotid-worksheet-map" className="flex flex-col h-full bg-[#0b1329] rounded-xl border border-slate-800 overflow-hidden relative shadow-lg">
       
       {/* 1. Header Toolbar */}
       <div className="p-4 bg-[#0f172a] border-b border-slate-800 flex flex-col gap-3">
@@ -691,7 +691,7 @@ export const CarotidWorksheetMap: React.FC<CarotidWorksheetMapProps> = ({
       )}
 
       {/* SVG Canvas Container */}
-      <div className="p-6 flex items-center justify-center bg-[#070b14] overflow-hidden relative min-h-[660px]">
+      <div className="p-4 sm:p-6 flex-1 flex items-center justify-center bg-[#070b14] overflow-hidden relative min-h-[500px]">
         
         {/* Floating Viewport Controls */}
         <div className="absolute top-4 right-4 flex items-center gap-1 bg-[#0b1329]/95 border border-slate-700/80 p-1 rounded-lg shadow-xl z-20 backdrop-blur-sm select-none">
@@ -702,7 +702,7 @@ export const CarotidWorksheetMap: React.FC<CarotidWorksheetMapProps> = ({
 
         <svg
           viewBox="60 -10 780 660"
-          className="w-full max-w-5xl h-auto select-none transition-all duration-300"
+          className="w-full max-w-5xl max-h-full h-auto select-none transition-all duration-300"
           id="worksheet-svg-viewport"
         >
           <defs>

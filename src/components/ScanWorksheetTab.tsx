@@ -236,9 +236,9 @@ export const ScanWorksheetTab: React.FC<ScanWorksheetTabProps> = ({
         />
 
         {/* Carotid Anatomical Workspace & Detailed Assessment Grid */}
-        <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 items-start">
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 items-stretch">
           {/* Main Vascular Workspace (7 cols) */}
-          <main className="xl:col-span-7 space-y-4">
+          <main className="xl:col-span-7 flex flex-col h-full">
             {/* Interactive Anatomical Diagram with Variant Toolbar */}
             <CarotidWorksheetMap
               studyData={studyData}
@@ -252,8 +252,8 @@ export const ScanWorksheetTab: React.FC<ScanWorksheetTabProps> = ({
             />
           </main>
 
-          {/* Sticky Right Side Assessment Panel (5 cols) */}
-          <aside className="xl:col-span-5 sticky top-[136px] h-[calc(100vh-160px)] flex flex-col">
+          {/* Right Side Assessment Panel with Key Findings Footer (5 cols) */}
+          <aside className="xl:col-span-5 flex flex-col h-full">
             <SegmentAssessment
               studyData={studyData}
               selectedIds={selectedSegmentIds}
